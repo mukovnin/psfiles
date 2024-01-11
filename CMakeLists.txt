@@ -2,9 +2,11 @@ cmake_minimum_required(VERSION 3.10)
 
 project(psfiles)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wpedantic -Werror")
+set(CMAKE_CXX_FLAGS "--std=c++20 -Wall -Wextra -Wpedantic -Werror")
 
 set(SOURCES
+    args.cpp
+    column.cpp
     main.cpp)
 
 add_executable(${PROJECT_NAME}

@@ -1,6 +1,9 @@
-int main(int argc, char **argv)
-{
-    (void)argc;
-    (void)argv;
-    return 0;
+#include "args.hpp"
+#include <cstdlib>
+
+int main(int argc, char **argv) {
+  ArgsParser args(argc, argv);
+  if (!args)
+    return EXIT_FAILURE;
+  return 0;
 }
