@@ -7,7 +7,8 @@ set(CMAKE_CXX_FLAGS "--std=c++20 -Wall -Wextra -Wpedantic -Werror")
 set(SOURCES
     args.cpp
     column.cpp
-    main.cpp)
+    main.cpp
+    tracer.cpp)
 
 add_executable(${PROJECT_NAME}
                ${SOURCES})
