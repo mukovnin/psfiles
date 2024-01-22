@@ -9,12 +9,14 @@ private:
   pid_t pid{0};
   bool withinSyscall{false};
   bool spawned{false}, attached{false};
+  std::string closingFile;
   static sig_atomic_t terminate;
   bool iteration();
   bool waitForSyscall();
   bool spawnTracee(char *const *argv);
   bool setPtraceOptions();
   bool setSignalHandler();
+  std::string filePath(int fd);
   static void signalHandler(int);
 
 public:

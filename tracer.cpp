@@ -4,13 +4,10 @@
 #include <cstdint>
 #include <ctype.h>
 #include <errno.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
+#include <linux/limits.h>
 #include <stdlib.h>
-#include <string.h>
+#include <string>
 #include <sys/ptrace.h>
-#include <sys/time.h>
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -83,6 +80,25 @@ bool Tracer::setPtraceOptions() {
   return true;
 }
 
+std::string Tracer::filePath(int fd) {
+  const char *invalid = "*INVALID FD*";
+  if (pid <= 0)
+    return {};
+  if (fd < 0)
+    return invalid;
+  const char *std[] = {"*STDIN*", "*STDOUT*", "*STDERR*"};
+  if (fd <= 2)
+    return std[fd];
+  std::string linkPath =
+      "/proc/" + std::to_string(pid) + "/fd/" + std::to_string(fd);
+  std::string out(PATH_MAX, 0);
+  if (readlink(linkPath.data(), out.data(), out.size()) == -1) {
+    LOGPE("readlink");
+    return invalid;
+  }
+  return out;
+}
+
 void Tracer::signalHandler(int) { terminate = 1; }
 
 bool Tracer::setSignalHandler() {
@@ -133,39 +149,33 @@ bool Tracer::iteration() {
   //       rax - read/write count (read, write)
   int64_t sc = regs.orig_rax, rax = regs.rax, rdi = regs.rdi;
 
-  if (!withinSyscall &&
-      (sc == __NR_read || sc == __NR_write || sc == __NR_close)) {
-    // TODO: translate fd to file path and add it to list
-  } else {
-    bool skip = false;
+  if (!withinSyscall) {
+    if (sc == __NR_close)
+      closingFile = filePath(rdi);
+  } else if (rax >= 0) {
     switch (sc) {
     case __NR_read:
     case __NR_readv: {
-      LOGI("fd #: read size #", rdi, rax);
+      LOGI("#: read size #", filePath(rdi), rax);
       break;
     }
     case __NR_write:
     case __NR_writev: {
-      LOGI("fd #: write size #", rdi, rax);
+      LOGI("#: write size #", filePath(rdi), rax);
       break;
     }
     case __NR_open:
     case __NR_openat: {
-      LOGI("open");
-      // TODO: translate fd to file path and add it to list
+      LOGI("file opened: #", filePath(rax));
       break;
     }
     case __NR_close: {
-      LOGI("close");
+      LOGI("file closed: #", closingFile);
       break;
     }
     default: {
-      skip = true;
       break;
     }
-    }
-    if (!skip && rax >= 0) {
-      // TODO: update last access time
     }
   }
 
