@@ -1,9 +1,12 @@
 #include "tracer.hpp"
 #include "log.hpp"
+#include <algorithm>
 #include <asm/unistd.h>
 #include <cstdint>
 #include <ctype.h>
 #include <errno.h>
+#include <fstream>
+#include <iterator>
 #include <linux/limits.h>
 #include <stdlib.h>
 #include <string>
@@ -22,6 +25,7 @@ Tracer::Tracer(pid_t pid, EventCallback cb) : pid(pid), callback(cb) {
     return;
   }
   attached = true;
+  cmdLine = getCmdLine();
   if (setPtraceOptions())
     LOGI("Attached to process with PID #.", pid);
 }
@@ -45,6 +49,7 @@ Tracer::Tracer(char *const *argv, EventCallback cb) : callback(cb) {
       LOGE("Unexpected wait status: #0x#\n", std::hex, status);
       return;
     }
+    cmdLine = getCmdLine();
     if (setPtraceOptions())
       LOGI("Tracee successfully started (PID #).", pid);
   }
@@ -97,6 +102,18 @@ std::string Tracer::filePath(int fd) {
     return invalid;
   }
   return out;
+}
+
+std::string Tracer::getCmdLine() {
+  std::string path = "/proc/" + std::to_string(pid) + "/cmdline";
+  std::ifstream file(path);
+  if (!file)
+    return {};
+  std::istreambuf_iterator<char> beg{file}, end;
+  std::string str;
+  std::transform(beg, end, std::back_inserter(str),
+                 [](char c) { return c ? c : ' '; });
+  return str;
 }
 
 void Tracer::signalHandler(int) { terminate = 1; }
@@ -222,3 +239,7 @@ bool Tracer::loop() {
     ;
   return terminate;
 }
+
+pid_t Tracer::traceePid() const { return pid; }
+
+std::string Tracer::traceeCmdLine() const { return cmdLine; }

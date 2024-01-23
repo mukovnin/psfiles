@@ -8,6 +8,7 @@
 class Tracer {
 private:
   pid_t pid{0};
+  std::string cmdLine;
   bool withinSyscall{false};
   bool spawned{false}, attached{false};
   std::string closingFile;
@@ -19,6 +20,7 @@ private:
   bool setPtraceOptions();
   bool setSignalHandler();
   std::string filePath(int fd);
+  std::string getCmdLine();
   static void signalHandler(int);
 
 public:
@@ -26,4 +28,6 @@ public:
   Tracer(char *const *argv, EventCallback cb);
   ~Tracer();
   bool loop();
+  pid_t traceePid() const;
+  std::string traceeCmdLine() const;
 };
