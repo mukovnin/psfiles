@@ -8,6 +8,7 @@ set(SOURCES
     args.cpp
     column.cpp
     main.cpp
+    output.cpp
     tracer.cpp)
 
 add_executable(${PROJECT_NAME}
