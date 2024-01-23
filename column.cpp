@@ -3,13 +3,13 @@
 #include <ranges>
 
 static std::map<std::string, Column> s2c{{"path", Column::Path},
-                                         {"write_size", Column::WriteSize},
-                                         {"read_size", Column::ReadSize},
-                                         {"write_count", Column::WriteCount},
-                                         {"read_count", Column::ReadCount},
-                                         {"open_count", Column::OpenCount},
-                                         {"close_count", Column::CloseCount},
-                                         {"last_access", Column::LastAccess}};
+                                         {"wsize", Column::WriteSize},
+                                         {"rsize", Column::ReadSize},
+                                         {"wcount", Column::WriteCount},
+                                         {"rcount", Column::ReadCount},
+                                         {"ocount", Column::OpenCount},
+                                         {"ccount", Column::CloseCount},
+                                         {"laccess", Column::LastAccess}};
 
 std::optional<Column> stringToColumn(const std::string &str) {
   if (auto it = s2c.find(str); it != s2c.cend())
