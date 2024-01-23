@@ -1,5 +1,6 @@
 #pragma once
 
+#include "event.hpp"
 #include <signal.h>
 #include <string>
 #include <sys/types.h>
@@ -11,6 +12,7 @@ private:
   bool spawned{false}, attached{false};
   std::string closingFile;
   static sig_atomic_t terminate;
+  EventCallback callback;
   bool iteration();
   bool waitForSyscall();
   bool spawnTracee(char *const *argv);
@@ -20,8 +22,8 @@ private:
   static void signalHandler(int);
 
 public:
-  Tracer(pid_t pid);
-  Tracer(char *const *argv);
+  Tracer(pid_t pid, EventCallback cb);
+  Tracer(char *const *argv, EventCallback cb);
   ~Tracer();
   bool loop();
 };

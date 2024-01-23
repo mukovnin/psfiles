@@ -14,7 +14,7 @@
 
 sig_atomic_t Tracer::terminate{0};
 
-Tracer::Tracer(pid_t pid) : pid(pid) {
+Tracer::Tracer(pid_t pid, EventCallback cb) : pid(pid), callback(cb) {
   if (!setSignalHandler())
     return;
   if (ptrace(PTRACE_ATTACH, pid, nullptr, nullptr) != 0) {
@@ -26,7 +26,7 @@ Tracer::Tracer(pid_t pid) : pid(pid) {
     LOGI("Attached to process with PID #.", pid);
 }
 
-Tracer::Tracer(char *const *argv) {
+Tracer::Tracer(char *const *argv, EventCallback cb) : callback(cb) {
   if (!setSignalHandler())
     return;
   pid = fork();
@@ -156,21 +156,21 @@ bool Tracer::iteration() {
     switch (sc) {
     case __NR_read:
     case __NR_readv: {
-      LOGI("#: read size #", filePath(rdi), rax);
+      callback(EventInfo{Event::Read, filePath(rdi), (size_t)rax});
       break;
     }
     case __NR_write:
     case __NR_writev: {
-      LOGI("#: write size #", filePath(rdi), rax);
+      callback(EventInfo{Event::Write, filePath(rdi), (size_t)rax});
       break;
     }
     case __NR_open:
     case __NR_openat: {
-      LOGI("file opened: #", filePath(rax));
+      callback(EventInfo{Event::Open, filePath(rax)});
       break;
     }
     case __NR_close: {
-      LOGI("file closed: #", closingFile);
+      callback(EventInfo{Event::Close, closingFile});
       break;
     }
     default: {
