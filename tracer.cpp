@@ -101,6 +101,8 @@ std::string Tracer::filePath(int fd) {
     LOGPE("readlink");
     return invalid;
   }
+  if (size_t len = out.find('\0'); len != std::string::npos)
+      out.resize(len);
   return out;
 }
 
