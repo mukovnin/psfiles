@@ -3,6 +3,7 @@
 #include "column.hpp"
 #include "event.hpp"
 #include <ctime>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -49,4 +50,19 @@ private:
   std::tm now() const;
   std::string formatPath(const std::string &path) const;
   std::string formatSize(size_t size) const;
+};
+
+
+class FileOutput : public Output {
+public:
+  FileOutput(const char *path);
+
+protected:
+  virtual std::ostream &stream() override;
+  virtual void clear() override;
+  virtual size_t maxWidth() override;
+  virtual std::pair<size_t, size_t> linesRange() override;
+
+private:
+  std::ofstream file;
 };

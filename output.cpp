@@ -158,3 +158,15 @@ std::string Output::formatSize(size_t size) const {
   }
   return std::to_string(size) + suffixes[i];
 }
+
+
+
+FileOutput::FileOutput(const char *path) : file(path) {}
+
+std::ostream &FileOutput::stream() { return file; }
+
+void FileOutput::clear() { file.seekp(0); }
+
+size_t FileOutput::maxWidth() { return PATH_MAX + 100; }
+
+std::pair<size_t, size_t> FileOutput::linesRange() { return {0, count()}; }
