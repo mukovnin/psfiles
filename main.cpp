@@ -1,20 +1,26 @@
 #include "args.hpp"
 #include "event.hpp"
 #include "log.hpp"
+#include "output.hpp"
 #include "tracer.hpp"
 #include <cstdlib>
+#include <memory>
 #include <unistd.h>
-
-void callbackStub(const EventInfo &info) {
-  LOGI("path # event # arg #", info.path, static_cast<int>(info.type),
-       info.arg);
-}
 
 int main(int argc, char **argv) {
   ArgsParser args(argc, argv);
   if (!args)
     return EXIT_FAILURE;
-  Tracer tracer = args.traceeArgs() ? Tracer(args.traceeArgs(), callbackStub)
-                                    : Tracer(args.traceePid(), callbackStub);
+  std::unique_ptr<Output> output;
+  const char *file = args.outputFile();
+  if (file)
+    output.reset(new FileOutput(file));
+  else
+    output.reset(new TerminalOutput);
+  output->setSorting(args.sortType());
+  auto outCallback = [&](const EventInfo &ei) { output->handleEvent(ei); };
+  Tracer tracer = args.traceeArgs() ? Tracer(args.traceeArgs(), outCallback)
+                                    : Tracer(args.traceePid(), outCallback);
+  output->setProcessInfo(tracer.traceePid(), tracer.traceeCmdLine());
   return tracer.loop() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
