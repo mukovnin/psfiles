@@ -37,6 +37,7 @@ private:
     size_t closeCount{0};
     std::tm lastAccess{};
   };
+  static constexpr size_t indexColWidth{4};
   static constexpr size_t sizeColWidth{7};
   static constexpr size_t timeColWidth{12};
   size_t pathColWidth{0};
@@ -46,7 +47,7 @@ private:
   std::string cmd;
   bool reverseSorting{false};
   void sort();
-  void printEntry(const Entry &entry);
+  void printEntry(size_t index, const Entry &entry);
   void printProcessInfo();
   void printColumnHeaders();
   std::tm now() const;

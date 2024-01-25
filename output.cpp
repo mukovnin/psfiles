@@ -76,14 +76,14 @@ void Output::update() {
     return;
   size_t maxPathWidth = it->path.size();
   ssize_t maxPathColWidth =
-      (ssize_t)maxWidth() - 6 * sizeColWidth - timeColWidth;
+      (ssize_t)maxWidth() - 6 * sizeColWidth - timeColWidth - indexColWidth;
   if (maxPathColWidth < 10)
     return;
   pathColWidth = std::min(maxPathWidth, (size_t)maxPathColWidth);
   printColumnHeaders();
   sort();
   for (size_t i = begin; i < end; ++i)
-    printEntry(list[i]);
+    printEntry(i + 1, list[i]);
 }
 
 size_t Output::count() const { return list.size(); }
@@ -116,8 +116,9 @@ void Output::sort() {
   std::sort(list.begin(), list.end(), compare);
 }
 
-void Output::printEntry(const Entry &entry) {
+void Output::printEntry(size_t index, const Entry &entry) {
   auto &s = stream();
+  s << std::left << std::setw(indexColWidth) << index << std::right;
   s << std::setw(pathColWidth) << formatPath(entry.path);
   s << std::setw(sizeColWidth) << formatSize(entry.writeSize);
   s << std::setw(sizeColWidth) << formatSize(entry.readSize);
@@ -133,6 +134,7 @@ void Output::printEntry(const Entry &entry) {
 
 void Output::printColumnHeaders() {
   auto &s = stream();
+  s << std::string(indexColWidth, ' ');
   s << std::setw(pathColWidth) << columnToString(Column::Path);
   for (auto col : {Column::WriteSize, Column::ReadSize, Column::WriteCount,
                    Column::ReadCount, Column::OpenCount, Column::CloseCount}) {
