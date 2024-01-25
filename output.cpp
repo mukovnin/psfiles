@@ -26,6 +26,11 @@ void Output::setSorting(Column column) {
   }
 }
 
+void Output::toggleSortingOrder() {
+  reverseSorting = !reverseSorting;
+  update();
+}
+
 void Output::setProcessInfo(pid_t pid, const std::string &cmd) {
   this->pid = pid;
   this->cmd = cmd;
@@ -34,25 +39,27 @@ void Output::setProcessInfo(pid_t pid, const std::string &cmd) {
 void Output::handleEvent(const EventInfo &info) {
   auto it = std::find_if(list.begin(), list.end(),
                          [&](auto &&item) { return item.path == info.path; });
-  if (it == list.end())
-    it = list.insert(list.end(), Entry{.path = info.path});
+  bool found = it != list.end();
+  if (!found)
+    list.emplace_back(Entry{info.path});
+  auto &item = found ? *it : list.back();
   switch (info.type) {
   case Event::Open:
-    ++it->openCount;
+    ++item.openCount;
     break;
   case Event::Close:
-    ++it->closeCount;
+    ++item.closeCount;
     break;
   case Event::Read:
-    ++it->readCount;
-    it->readSize += info.arg;
+    ++item.readCount;
+    item.readSize += info.arg;
     break;
   case Event::Write:
-    ++it->writeCount;
-    it->writeSize += info.arg;
+    ++item.writeCount;
+    item.writeSize += info.arg;
     break;
   }
-  it->lastAccess = now();
+  item.lastAccess = now();
   update();
 }
 
@@ -82,24 +89,27 @@ void Output::update() {
 size_t Output::count() const { return list.size(); }
 
 void Output::sort() {
-  auto compare = [this](Entry &first, Entry &second) {
+  auto compare = [this](const Entry &first, const Entry &second) {
+    const auto &f = reverseSorting ? second : first;
+    const auto &s = reverseSorting ? first : second;
     switch (sorting) {
     case Column::Path:
-      return first.path < second.path;
+      return f.path < s.path;
     case Column::WriteSize:
-      return first.writeSize < second.writeSize;
+      return f.writeSize < s.writeSize;
     case Column::ReadSize:
-      return first.readSize < second.writeSize;
+      return f.readSize < s.readSize;
     case Column::WriteCount:
-      return first.writeCount < second.writeCount;
+      return f.writeCount < s.writeCount;
     case Column::ReadCount:
-      return first.readCount < second.readCount;
+      return f.readCount < s.readCount;
     case Column::OpenCount:
-      return first.openCount < second.openCount;
+      return f.openCount < s.openCount;
     case Column::CloseCount:
-      return first.closeCount < second.closeCount;
+      return f.closeCount < s.closeCount;
     case Column::LastAccess:
-      return timegm(&first.lastAccess) < timegm(&second.lastAccess);
+      auto ft = f.lastAccess, st = s.lastAccess;
+      return timegm(&ft) < timegm(&st);
     }
     return true;
   };

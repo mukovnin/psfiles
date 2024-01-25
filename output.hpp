@@ -13,6 +13,7 @@ public:
   Output();
   virtual ~Output();
   void setSorting(Column column);
+  void toggleSortingOrder();
   void setProcessInfo(pid_t pid, const std::string &cmd);
   void handleEvent(const EventInfo &event);
 
@@ -43,6 +44,7 @@ private:
   Column sorting{Column::Path};
   pid_t pid{0};
   std::string cmd;
+  bool reverseSorting{false};
   void sort();
   void printEntry(const Entry &entry);
   void printProcessInfo();

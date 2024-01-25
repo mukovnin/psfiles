@@ -19,6 +19,7 @@ private:
   bool success;
   pid_t mTraceePid{0};
   Column mSortType{Column::Path};
+  bool mReverseSorting{false};
   char *const *mTraceeArgs{nullptr};
   const char *mOutputFile{nullptr};
   bool parse(int argc, char **argv);
@@ -28,6 +29,7 @@ public:
   ArgsParser(int argc, char **argv);
   pid_t traceePid() const;
   Column sortType() const;
+  bool reverseSorting() const;
   char *const *traceeArgs() const;
   const char *outputFile() const;
   operator bool() const;

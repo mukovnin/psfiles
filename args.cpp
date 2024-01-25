@@ -36,9 +36,15 @@ bool ArgsParser::parse(int argc, char **argv) {
       break;
     }
     case 's': {
-      if (auto opt = stringToColumn(optarg)) {
-        mSortType = *opt;
-        break;
+      if (std::string s = optarg; !s.empty()) {
+        if (s.back() == '-') {
+          s.pop_back();
+          mReverseSorting = true;
+        }
+        if (auto opt = stringToColumn(s)) {
+          mSortType = *opt;
+          break;
+        }
       }
       return false;
     }
@@ -66,6 +72,8 @@ pid_t ArgsParser::traceePid() const { return mTraceePid; }
 char *const *ArgsParser::traceeArgs() const { return mTraceeArgs; }
 
 Column ArgsParser::sortType() const { return mSortType; }
+
+bool ArgsParser::reverseSorting() const { return mReverseSorting; }
 
 const char *ArgsParser::outputFile() const { return mOutputFile; }
 

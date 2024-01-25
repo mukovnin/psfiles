@@ -18,6 +18,8 @@ int main(int argc, char **argv) {
   else
     output.reset(new TerminalOutput);
   output->setSorting(args.sortType());
+  if (args.reverseSorting())
+    output->toggleSortingOrder();
   auto outCallback = [&](const EventInfo &ei) { output->handleEvent(ei); };
   Tracer tracer = args.traceeArgs() ? Tracer(args.traceeArgs(), outCallback)
                                     : Tracer(args.traceePid(), outCallback);
