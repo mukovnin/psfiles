@@ -8,8 +8,12 @@
 #include <iomanip>
 #include <iostream>
 #include <linux/limits.h>
+#include <ostream>
+#include <signal.h>
 #include <string>
+#include <sys/ioctl.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 Output::Output() {}
 
@@ -159,8 +163,6 @@ std::string Output::formatSize(size_t size) const {
   return std::to_string(size) + suffixes[i];
 }
 
-
-
 FileOutput::FileOutput(const char *path) : file(path) {}
 
 std::ostream &FileOutput::stream() { return file; }
@@ -170,3 +172,49 @@ void FileOutput::clear() { file.seekp(0); }
 size_t FileOutput::maxWidth() { return PATH_MAX + 100; }
 
 std::pair<size_t, size_t> FileOutput::linesRange() { return {0, count()}; }
+
+size_t TerminalOutput::nCols;
+size_t TerminalOutput::nRows;
+
+TerminalOutput::TerminalOutput() {
+  signal(SIGWINCH, &TerminalOutput::sigwinchHandler);
+  updateWindowSize();
+}
+
+void TerminalOutput::sigwinchHandler(int) { updateWindowSize(); }
+
+void TerminalOutput::updateWindowSize() {
+  struct winsize ws;
+  ioctl(STDIN_FILENO, TIOCGWINSZ, &ws);
+  nCols = ws.ws_col;
+  nRows = ws.ws_row;
+}
+
+void TerminalOutput::lineUp() {
+  if (nRows + scrollDelta < count() + headerHeight) {
+    ++scrollDelta;
+    update();
+  }
+}
+
+void TerminalOutput::lineDown() {
+  if (scrollDelta > 0) {
+    --scrollDelta;
+    update();
+  }
+}
+
+std::ostream &TerminalOutput::stream() { return std::cout; }
+
+void TerminalOutput::clear() {
+  escape("H");
+  escape("J");
+}
+
+size_t TerminalOutput::maxWidth() { return nCols; }
+
+void TerminalOutput::escape(const char *cmd) { stream() << "\033[" << cmd; }
+
+std::pair<size_t, size_t> TerminalOutput::linesRange() {
+  return {scrollDelta, scrollDelta + nRows - headerHeight};
+}

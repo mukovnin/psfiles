@@ -52,7 +52,6 @@ private:
   std::string formatSize(size_t size) const;
 };
 
-
 class FileOutput : public Output {
 public:
   FileOutput(const char *path);
@@ -65,4 +64,25 @@ protected:
 
 private:
   std::ofstream file;
+};
+
+class TerminalOutput : public Output {
+public:
+  TerminalOutput();
+  void lineUp();
+  void lineDown();
+
+protected:
+  virtual std::ostream &stream() override;
+  virtual void clear() override;
+  virtual size_t maxWidth() override;
+  virtual std::pair<size_t, size_t> linesRange() override;
+
+private:
+  static size_t nCols;
+  static size_t nRows;
+  size_t scrollDelta{0};
+  void escape(const char *cmd);
+  static void updateWindowSize();
+  static void sigwinchHandler(int);
 };
