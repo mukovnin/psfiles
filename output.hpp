@@ -2,9 +2,11 @@
 
 #include "column.hpp"
 #include "event.hpp"
+#include <atomic>
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -42,10 +44,11 @@ private:
   static constexpr size_t timeColWidth{12};
   size_t pathColWidth{0};
   std::vector<Entry> list;
-  Column sorting{Column::Path};
+  std::atomic<Column> sorting{Column::Path};
+  std::atomic_bool reverseSorting{false};
+  mutable std::mutex mtx;
   pid_t pid{0};
   std::string cmd;
-  bool reverseSorting{false};
   void sort();
   void printEntry(size_t index, const Entry &entry);
   void printProcessInfo();

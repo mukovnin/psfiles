@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <iostream>
 #include <linux/limits.h>
+#include <mutex>
 #include <ostream>
 #include <signal.h>
 #include <string>
@@ -37,33 +38,37 @@ void Output::setProcessInfo(pid_t pid, const std::string &cmd) {
 }
 
 void Output::handleEvent(const EventInfo &info) {
-  auto it = std::find_if(list.begin(), list.end(),
-                         [&](auto &&item) { return item.path == info.path; });
-  bool found = it != list.end();
-  if (!found)
-    list.emplace_back(Entry{info.path});
-  auto &item = found ? *it : list.back();
-  switch (info.type) {
-  case Event::Open:
-    ++item.openCount;
-    break;
-  case Event::Close:
-    ++item.closeCount;
-    break;
-  case Event::Read:
-    ++item.readCount;
-    item.readSize += info.arg;
-    break;
-  case Event::Write:
-    ++item.writeCount;
-    item.writeSize += info.arg;
-    break;
+  {
+    std::lock_guard lck(mtx);
+    auto it = std::find_if(list.begin(), list.end(),
+                           [&](auto &&item) { return item.path == info.path; });
+    bool found = it != list.end();
+    if (!found)
+      list.emplace_back(Entry{info.path});
+    auto &item = found ? *it : list.back();
+    switch (info.type) {
+    case Event::Open:
+      ++item.openCount;
+      break;
+    case Event::Close:
+      ++item.closeCount;
+      break;
+    case Event::Read:
+      ++item.readCount;
+      item.readSize += info.arg;
+      break;
+    case Event::Write:
+      ++item.writeCount;
+      item.writeSize += info.arg;
+      break;
+    }
+    item.lastAccess = now();
   }
-  item.lastAccess = now();
   update();
 }
 
 void Output::update() {
+  std::lock_guard lck(mtx);
   clear();
   printProcessInfo();
   auto [begin, end] = linesRange();
@@ -86,7 +91,10 @@ void Output::update() {
     printEntry(i + 1, list[i]);
 }
 
-size_t Output::count() const { return list.size(); }
+size_t Output::count() const {
+  std::lock_guard lck(mtx);
+  return list.size();
+}
 
 void Output::sort() {
   auto compare = [this](const Entry &first, const Entry &second) {
