@@ -15,6 +15,9 @@ enum class Column {
   LastAccess
 };
 
+static constexpr unsigned maxColumnIndex{
+    static_cast<unsigned>(Column::LastAccess)};
+
 std::optional<Column> stringToColumn(const std::string &str);
 std::string columnToString(Column col);
 std::vector<std::string> columnNames();

@@ -8,6 +8,7 @@ set(SOURCES
     args.cpp
     column.cpp
     main.cpp
+    input.cpp
     output.cpp
     tracer.cpp)
 
