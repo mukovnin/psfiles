@@ -37,9 +37,9 @@ int main(int argc, char **argv) {
   };
   auto outCallback = [&](const EventInfo &ei) { output->handleEvent(ei); };
   if (file) {
-    output.reset(new FileOutput(file));
+    output.reset(new FileOutput(file, args.delay()));
   } else {
-    output.reset(new TerminalOutput);
+    output.reset(new TerminalOutput(args.delay()));
     input.reset(new Input(inCallback));
   }
   output->setSorting(args.sortType());

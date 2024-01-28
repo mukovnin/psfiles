@@ -48,6 +48,13 @@ bool ArgsParser::parse(int argc, char **argv) {
       }
       return false;
     }
+    case 'd': {
+      const char *first = optarg, *last = optarg + strlen(optarg);
+      auto [ptr, ec] = std::from_chars(first, last, mDelay);
+      if (!(ec == std::errc() && ptr == last))
+        return false;
+      break;
+    }
     case 'p': {
       const char *first = optarg, *last = optarg + strlen(optarg);
       auto [ptr, ec] = std::from_chars(first, last, mTraceePid);
@@ -74,6 +81,8 @@ char *const *ArgsParser::traceeArgs() const { return mTraceeArgs; }
 Column ArgsParser::sortType() const { return mSortType; }
 
 bool ArgsParser::reverseSorting() const { return mReverseSorting; }
+
+unsigned ArgsParser::delay() const { return mDelay; }
 
 const char *ArgsParser::outputFile() const { return mOutputFile; }
 

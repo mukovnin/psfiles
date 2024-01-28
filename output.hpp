@@ -8,11 +8,12 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 class Output {
 public:
-  Output();
+  Output(unsigned delay);
   virtual ~Output();
   void setSorting(Column column);
   void toggleSortingOrder();
@@ -23,6 +24,8 @@ protected:
   static constexpr size_t headerHeight{3};
   void update();
   size_t count() const;
+  void start();
+  void stop();
   virtual std::ostream &stream() = 0;
   virtual void clear() = 0;
   virtual size_t maxWidth() = 0;
@@ -43,12 +46,16 @@ private:
   static constexpr size_t sizeColWidth{7};
   static constexpr size_t timeColWidth{12};
   size_t pathColWidth{0};
+  unsigned interval{1};
   std::vector<Entry> list;
   std::atomic<Column> sorting{Column::Path};
   std::atomic_bool reverseSorting{false};
   mutable std::mutex mtx;
   pid_t pid{0};
   std::string cmd;
+  std::thread thread;
+  int eventFd{-1}, timerFd{-1};
+  void threadRoutine();
   void sort();
   void printEntry(size_t index, const Entry &entry);
   void printProcessInfo();
@@ -60,7 +67,8 @@ private:
 
 class FileOutput : public Output {
 public:
-  FileOutput(const char *path);
+  FileOutput(const char *path, unsigned delay);
+  virtual ~FileOutput();
 
 protected:
   virtual std::ostream &stream() override;
@@ -74,7 +82,8 @@ private:
 
 class TerminalOutput : public Output {
 public:
-  TerminalOutput();
+  TerminalOutput(unsigned delay);
+  virtual ~TerminalOutput();
   void lineUp();
   void lineDown();
 

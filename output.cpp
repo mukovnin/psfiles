@@ -1,24 +1,115 @@
 #include "output.hpp"
 #include "column.hpp"
 #include "event.hpp"
+#include "log.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <ctime>
 #include <iomanip>
 #include <iostream>
 #include <linux/limits.h>
 #include <mutex>
 #include <ostream>
+#include <poll.h>
 #include <signal.h>
 #include <string>
+#include <sys/eventfd.h>
 #include <sys/ioctl.h>
+#include <sys/timerfd.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-Output::Output() {}
+Output::Output(unsigned delay) {
+  eventFd = eventfd(0, 0);
+  if (eventFd == -1) {
+    LOGPE("eventfd");
+    return;
+  }
+  timerFd = timerfd_create(CLOCK_MONOTONIC, 0);
+  if (timerFd == -1) {
+    LOGPE("timerfd_create");
+    return;
+  }
+  itimerspec ts{.it_interval = {.tv_sec = delay, .tv_nsec = 0},
+                .it_value = {.tv_sec = delay, .tv_nsec = 0}};
+  if (timerfd_settime(timerFd, 0, &ts, nullptr) != 0) {
+    LOGPE("timerfd_settime");
+    close(timerFd);
+    close(eventFd);
+    timerFd = eventFd = -1;
+  }
+}
 
-Output::~Output() {}
+Output::~Output() {
+  if (eventFd != -1)
+    close(eventFd);
+  if (timerFd != -1)
+    close(timerFd);
+}
+
+void Output::threadRoutine() {
+  pollfd pfds[2]{{.fd = timerFd, .events = POLLIN, .revents = 0},
+                 {.fd = eventFd, .events = POLLIN, .revents = 0}};
+  bool stop{false};
+  while (!stop) {
+    if (int ret = poll(pfds, 2, -1); ret == -1) {
+      if (errno == EINTR)
+        continue;
+      LOGPE("poll");
+      stop = true;
+    } else {
+      for (size_t i = 0; !stop && i < 2; ++i) {
+        int fd = pfds[i].fd;
+        short revs = pfds[i].revents;
+        if (revs & POLLIN) {
+          uint64_t val;
+          char *p{reinterpret_cast<char *>(&val)};
+          size_t rest{sizeof(val)};
+          while (rest) {
+            ssize_t ret = read(fd, p, rest);
+            if (ret == -1 && errno != EINTR) {
+              LOGPE("read");
+              stop = true;
+              break;
+            }
+            rest -= ret;
+            p += ret;
+          }
+          if (fd == eventFd)
+            stop = true;
+          else if (!stop)
+            update();
+        } else if (revs & POLLERR) {
+          LOGE("Received POLLERR event.");
+          stop = true;
+        } else if (revs) {
+          LOGE("Received unexpected poll event: ##.", std::hex, revs);
+          stop = true;
+        }
+      }
+    }
+  }
+}
+
+void Output::start() {
+  if (eventFd != -1 && timerFd != -1 && !thread.joinable())
+    thread = std::thread(&Output::threadRoutine, this);
+}
+
+void Output::stop() {
+  if (thread.joinable()) {
+    int64_t val{1};
+    ssize_t ret = write(eventFd, &val, sizeof(val));
+    if (ret == sizeof(val))
+      thread.join();
+    else if (ret == -1)
+      LOGPE("write (eventfd)");
+    else
+      LOGE("eventfd: partial write");
+  }
+}
 
 void Output::setSorting(Column column) {
   if (sorting != column) {
@@ -38,33 +129,30 @@ void Output::setProcessInfo(pid_t pid, const std::string &cmd) {
 }
 
 void Output::handleEvent(const EventInfo &info) {
-  {
-    std::lock_guard lck(mtx);
-    auto it = std::find_if(list.begin(), list.end(),
-                           [&](auto &&item) { return item.path == info.path; });
-    bool found = it != list.end();
-    if (!found)
-      list.emplace_back(Entry{info.path});
-    auto &item = found ? *it : list.back();
-    switch (info.type) {
-    case Event::Open:
-      ++item.openCount;
-      break;
-    case Event::Close:
-      ++item.closeCount;
-      break;
-    case Event::Read:
-      ++item.readCount;
-      item.readSize += info.arg;
-      break;
-    case Event::Write:
-      ++item.writeCount;
-      item.writeSize += info.arg;
-      break;
-    }
-    item.lastAccess = now();
+  std::lock_guard lck(mtx);
+  auto it = std::find_if(list.begin(), list.end(),
+                         [&](auto &&item) { return item.path == info.path; });
+  bool found = it != list.end();
+  if (!found)
+    list.emplace_back(Entry{info.path});
+  auto &item = found ? *it : list.back();
+  switch (info.type) {
+  case Event::Open:
+    ++item.openCount;
+    break;
+  case Event::Close:
+    ++item.closeCount;
+    break;
+  case Event::Read:
+    ++item.readCount;
+    item.readSize += info.arg;
+    break;
+  case Event::Write:
+    ++item.writeCount;
+    item.writeSize += info.arg;
+    break;
   }
-  update();
+  item.lastAccess = now();
 }
 
 void Output::update() {
@@ -121,7 +209,7 @@ void Output::sort() {
     }
     return true;
   };
-  std::sort(list.begin(), list.end(), compare);
+  std::stable_sort(list.begin(), list.end(), compare);
 }
 
 void Output::printEntry(size_t index, const Entry &entry) {
@@ -183,7 +271,12 @@ std::string Output::formatSize(size_t size) const {
   return std::to_string(size) + suffixes[i];
 }
 
-FileOutput::FileOutput(const char *path) : file(path) {}
+FileOutput::FileOutput(const char *path, unsigned delay)
+    : Output(delay), file(path) {
+  start();
+}
+
+FileOutput::~FileOutput() { stop(); }
 
 std::ostream &FileOutput::stream() { return file; }
 
@@ -196,10 +289,13 @@ std::pair<size_t, size_t> FileOutput::linesRange() { return {0, count()}; }
 size_t TerminalOutput::nCols;
 size_t TerminalOutput::nRows;
 
-TerminalOutput::TerminalOutput() {
+TerminalOutput::TerminalOutput(unsigned delay) : Output(delay) {
   signal(SIGWINCH, &TerminalOutput::sigwinchHandler);
   updateWindowSize();
+  start();
 }
+
+TerminalOutput::~TerminalOutput() { stop(); }
 
 void TerminalOutput::sigwinchHandler(int) { updateWindowSize(); }
 
