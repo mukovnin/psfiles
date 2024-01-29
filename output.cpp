@@ -169,7 +169,7 @@ void Output::update() {
   size_t maxPathWidth = it->path.size();
   size_t otherColsWidth = 6 * sizeColWidth + timeColWidth + indexColWidth;
   if (maxWidth() < otherColsWidth + 10)
-      return;
+    return;
   pathColWidth = std::min(maxPathWidth, maxWidth() - otherColsWidth);
   printColumnHeaders();
   sort();
@@ -230,6 +230,14 @@ void Output::printEntry(size_t index, const Entry &entry) {
 
 void Output::printColumnHeaders() {
   auto &s = stream();
+  if (visibleColumnNumbers()) {
+    s << std::string(indexColWidth, ' ');
+    s << std::setw(pathColWidth) << "[1]";
+    for (size_t i = 2; i < 8; ++i)
+      s << std::setw(sizeColWidth) << ("[" + std::to_string(i) + "]");
+    s << std::setw(timeColWidth) << "[8]";
+    s << std::endl;
+  }
   s << std::string(indexColWidth, ' ');
   s << std::setw(pathColWidth) << columnToString(Column::Path);
   for (auto col : {Column::WriteSize, Column::ReadSize, Column::WriteCount,
@@ -271,6 +279,10 @@ std::string Output::formatSize(size_t size) const {
   return std::to_string(size) + suffixes[i];
 }
 
+size_t Output::headerHeight() {
+  return fixedHeaderHeight + visibleColumnNumbers();
+}
+
 FileOutput::FileOutput(const char *path, unsigned delay)
     : Output(delay), file(path) {
   start();
@@ -287,6 +299,8 @@ size_t FileOutput::maxWidth() { return std::numeric_limits<size_t>::max(); }
 std::pair<size_t, size_t> FileOutput::linesRange() {
   return {0, std::numeric_limits<size_t>::max()};
 }
+
+bool FileOutput::visibleColumnNumbers() { return false; }
 
 size_t TerminalOutput::nCols;
 size_t TerminalOutput::nRows;
@@ -309,7 +323,7 @@ void TerminalOutput::updateWindowSize() {
 }
 
 void TerminalOutput::lineUp() {
-  if (nRows + scrollDelta < count() + headerHeight) {
+  if (nRows + scrollDelta < count() + headerHeight()) {
     ++scrollDelta;
     update();
   }
@@ -334,5 +348,7 @@ size_t TerminalOutput::maxWidth() { return nCols; }
 void TerminalOutput::escape(const char *cmd) { stream() << "\033[" << cmd; }
 
 std::pair<size_t, size_t> TerminalOutput::linesRange() {
-  return {scrollDelta, scrollDelta + nRows - headerHeight};
+  return {scrollDelta, scrollDelta + nRows - headerHeight()};
 }
+
+bool TerminalOutput::visibleColumnNumbers() { return true; }

@@ -21,15 +21,17 @@ public:
   void handleEvent(const EventInfo &event);
 
 protected:
-  static constexpr size_t headerHeight{3};
+  static constexpr size_t fixedHeaderHeight{3};
   void update();
   size_t count() const;
   void start();
   void stop();
+  size_t headerHeight();
   virtual std::ostream &stream() = 0;
   virtual void clear() = 0;
   virtual size_t maxWidth() = 0;
   virtual std::pair<size_t, size_t> linesRange() = 0;
+  virtual bool visibleColumnNumbers() = 0;
 
 private:
   struct Entry {
@@ -75,6 +77,7 @@ protected:
   virtual void clear() override;
   virtual size_t maxWidth() override;
   virtual std::pair<size_t, size_t> linesRange() override;
+  virtual bool visibleColumnNumbers() override;
 
 private:
   std::ofstream file;
@@ -92,6 +95,7 @@ protected:
   virtual void clear() override;
   virtual size_t maxWidth() override;
   virtual std::pair<size_t, size_t> linesRange() override;
+  virtual bool visibleColumnNumbers() override;
 
 private:
   static size_t nCols;
