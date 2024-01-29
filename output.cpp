@@ -9,6 +9,7 @@
 #include <ctime>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <linux/limits.h>
 #include <mutex>
 #include <ostream>
@@ -159,22 +160,21 @@ void Output::update() {
   std::lock_guard lck(mtx);
   clear();
   printProcessInfo();
-  auto [begin, end] = linesRange();
-  end = std::min(end, list.size());
-  auto it = std::max_element(&list[begin], &list[end],
+  auto it = std::max_element(list.cbegin(), list.cend(),
                              [](auto &&first, auto &&second) {
                                return first.path.size() < second.path.size();
                              });
-  if (it == &list[end])
+  if (it == list.cend())
     return;
   size_t maxPathWidth = it->path.size();
-  ssize_t maxPathColWidth =
-      (ssize_t)maxWidth() - 6 * sizeColWidth - timeColWidth - indexColWidth;
-  if (maxPathColWidth < 10)
-    return;
-  pathColWidth = std::min(maxPathWidth, (size_t)maxPathColWidth);
+  size_t otherColsWidth = 6 * sizeColWidth + timeColWidth + indexColWidth;
+  if (maxWidth() < otherColsWidth + 10)
+      return;
+  pathColWidth = std::min(maxPathWidth, maxWidth() - otherColsWidth);
   printColumnHeaders();
   sort();
+  auto [begin, end] = linesRange();
+  end = std::min(end, list.size());
   for (size_t i = begin; i < end; ++i)
     printEntry(i + 1, list[i]);
 }
@@ -282,9 +282,11 @@ std::ostream &FileOutput::stream() { return file; }
 
 void FileOutput::clear() { file.seekp(0); }
 
-size_t FileOutput::maxWidth() { return PATH_MAX + 100; }
+size_t FileOutput::maxWidth() { return std::numeric_limits<size_t>::max(); }
 
-std::pair<size_t, size_t> FileOutput::linesRange() { return {0, count()}; }
+std::pair<size_t, size_t> FileOutput::linesRange() {
+  return {0, std::numeric_limits<size_t>::max()};
+}
 
 size_t TerminalOutput::nCols;
 size_t TerminalOutput::nRows;
@@ -303,7 +305,7 @@ void TerminalOutput::updateWindowSize() {
   struct winsize ws;
   ioctl(STDIN_FILENO, TIOCGWINSZ, &ws);
   nCols = ws.ws_col;
-  nRows = ws.ws_row;
+  nRows = ws.ws_row ? ws.ws_row - 1 : 0;
 }
 
 void TerminalOutput::lineUp() {
