@@ -231,15 +231,17 @@ void Output::printEntry(size_t index, const Entry &entry) {
 void Output::printColumnHeaders() {
   auto &s = stream();
   if (visibleColumnNumbers()) {
-    s << std::string(indexColWidth, ' ');
-    s << std::setw(pathColWidth) << "[1]";
+    std::string ss = "[S]orting:" +
+                     std::to_string(static_cast<unsigned>(sorting.load()) + 1) +
+                     "," + (reverseSorting ? "-" : "+");
+    s << ss;
+    s << std::setw(indexColWidth + pathColWidth - ss.size()) << "[1]";
     for (size_t i = 2; i < 8; ++i)
       s << std::setw(sizeColWidth) << ("[" + std::to_string(i) + "]");
     s << std::setw(timeColWidth) << "[8]";
     s << std::endl;
   }
-  s << std::string(indexColWidth, ' ');
-  s << std::setw(pathColWidth) << columnToString(Column::Path);
+  s << std::setw(indexColWidth + pathColWidth) << columnToString(Column::Path);
   for (auto col : {Column::WriteSize, Column::ReadSize, Column::WriteCount,
                    Column::ReadCount, Column::OpenCount, Column::CloseCount}) {
     s << std::setw(sizeColWidth) << columnToString(col);
