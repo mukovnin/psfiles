@@ -6,7 +6,8 @@ static std::map<std::string, Column> s2c{
     {"path", Column::Path},         {"wsize", Column::WriteSize},
     {"rsize", Column::ReadSize},    {"wcount", Column::WriteCount},
     {"rcount", Column::ReadCount},  {"ocount", Column::OpenCount},
-    {"ccount", Column::CloseCount}, {"laccess", Column::LastAccess}};
+    {"ccount", Column::CloseCount}, {"mm", Column::MemoryMapped},
+    {"laccess", Column::LastAccess}};
 
 std::optional<Column> stringToColumn(const std::string &str) {
   if (auto it = s2c.find(str); it != s2c.cend())

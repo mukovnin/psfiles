@@ -10,6 +10,7 @@
 #include <linux/limits.h>
 #include <stdlib.h>
 #include <string>
+#include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
 #include <sys/wait.h>
@@ -190,6 +191,13 @@ bool Tracer::iteration() {
     }
     case __NR_close: {
       callback(EventInfo{Event::Close, closingFile});
+      break;
+    }
+    case __NR_mmap: {
+      int fd = regs.r8;
+      int flags = regs.r10;
+      if (!(flags & MAP_ANONYMOUS))
+        callback(EventInfo{Event::MMap, filePath(fd)});
       break;
     }
     default: {

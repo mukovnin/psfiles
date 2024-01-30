@@ -12,6 +12,7 @@ enum class Column {
   ReadCount,
   OpenCount,
   CloseCount,
+  MemoryMapped,
   LastAccess
 };
 

@@ -4,7 +4,7 @@
 #include <functional>
 #include <string>
 
-enum class Event { Open, Close, Read, Write };
+enum class Event { Open, Close, Read, Write, MMap };
 
 struct EventInfo {
   Event type;

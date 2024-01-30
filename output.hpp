@@ -44,10 +44,12 @@ private:
     size_t readCount{0};
     size_t openCount{0};
     size_t closeCount{0};
+    bool memoryMapped{false};
     std::tm lastAccess{};
   };
   static constexpr size_t indexColWidth{4};
   static constexpr size_t sizeColWidth{7};
+  static constexpr size_t mmapColWidth{3};
   static constexpr size_t timeColWidth{12};
   size_t pathColWidth{0};
   unsigned interval{1};

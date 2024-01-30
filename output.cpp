@@ -153,6 +153,9 @@ void Output::handleEvent(const EventInfo &info) {
     ++item.writeCount;
     item.writeSize += info.arg;
     break;
+  case Event::MMap:
+    item.memoryMapped = true;
+    break;
   }
   item.lastAccess = now();
 }
@@ -168,7 +171,8 @@ void Output::update() {
   if (it == list.cend())
     return;
   size_t maxPathWidth = it->path.size();
-  size_t otherColsWidth = 6 * sizeColWidth + timeColWidth + indexColWidth;
+  size_t otherColsWidth =
+      6 * sizeColWidth + mmapColWidth + timeColWidth + indexColWidth;
   if (maxWidth() < otherColsWidth + 10)
     return;
   pathColWidth = std::min(maxPathWidth, maxWidth() - otherColsWidth);
@@ -204,6 +208,8 @@ void Output::sort() {
       return f.openCount < s.openCount;
     case Column::CloseCount:
       return f.closeCount < s.closeCount;
+    case Column::MemoryMapped:
+      return f.memoryMapped < s.memoryMapped;
     case Column::LastAccess:
       auto ft = f.lastAccess, st = s.lastAccess;
       return timegm(&ft) < timegm(&st);
@@ -223,6 +229,7 @@ void Output::printEntry(size_t index, const Entry &entry) {
   s << std::setw(sizeColWidth) << entry.readCount;
   s << std::setw(sizeColWidth) << entry.openCount;
   s << std::setw(sizeColWidth) << entry.closeCount;
+  s << std::setw(mmapColWidth) << (entry.memoryMapped ? 'y' : 'n');
   char timeString[50];
   std::strftime(timeString, sizeof(timeString), "%X", &entry.lastAccess);
   s << std::setw(timeColWidth) << conv.from_bytes(timeString);
@@ -239,7 +246,8 @@ void Output::printColumnHeaders() {
     s << std::setw(indexColWidth + pathColWidth - ss.size()) << L"[1]";
     for (size_t i = 2; i < 8; ++i)
       s << std::setw(sizeColWidth) << (L"[" + std::to_wstring(i) + L"]");
-    s << std::setw(timeColWidth) << L"[8]";
+    s << std::setw(mmapColWidth) << L"[8]";
+    s << std::setw(timeColWidth) << L"[9]";
     s << std::endl;
   }
   s << std::setw(indexColWidth + pathColWidth)
@@ -248,6 +256,8 @@ void Output::printColumnHeaders() {
                    Column::ReadCount, Column::OpenCount, Column::CloseCount}) {
     s << std::setw(sizeColWidth) << conv.from_bytes(columnToString(col));
   }
+  s << std::setw(mmapColWidth)
+    << conv.from_bytes(columnToString(Column::MemoryMapped));
   s << std::setw(timeColWidth)
     << conv.from_bytes(columnToString(Column::LastAccess));
   s << std::endl;
