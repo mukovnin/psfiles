@@ -90,8 +90,8 @@ class TerminalOutput : public Output {
 public:
   TerminalOutput(unsigned delay);
   virtual ~TerminalOutput();
-  void lineUp();
-  void lineDown();
+  void pageUp();
+  void pageDown();
 
 protected:
   virtual std::wostream &stream() override;

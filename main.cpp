@@ -30,10 +30,10 @@ int main(int argc, char **argv) {
       output->setSorting(static_cast<Column>(arg));
       break;
     case Command::Up:
-      dynamic_cast<TerminalOutput *>(output.get())->lineUp();
+      dynamic_cast<TerminalOutput *>(output.get())->pageUp();
       break;
     case Command::Down:
-      dynamic_cast<TerminalOutput *>(output.get())->lineDown();
+      dynamic_cast<TerminalOutput *>(output.get())->pageDown();
       break;
     }
   };

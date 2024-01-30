@@ -330,17 +330,22 @@ void TerminalOutput::updateWindowSize() {
   nRows = ws.ws_row ? ws.ws_row - 1 : 0;
 }
 
-void TerminalOutput::lineUp() {
-  if (nRows + scrollDelta < count() + headerHeight()) {
-    ++scrollDelta;
+void TerminalOutput::pageUp() {
+  size_t m = nRows + scrollDelta;
+  size_t n = count() + headerHeight();
+  if (m < n && nRows > headerHeight()) {
+    scrollDelta += std::min(nRows - headerHeight(), n - m);
     update();
   }
 }
 
-void TerminalOutput::lineDown() {
-  if (scrollDelta > 0) {
-    --scrollDelta;
-    update();
+void TerminalOutput::pageDown() {
+  if (nRows > headerHeight()) {
+    size_t n = std::min(scrollDelta, nRows - headerHeight());
+    if (n) {
+      scrollDelta -= n;
+      update();
+    }
   }
 }
 
