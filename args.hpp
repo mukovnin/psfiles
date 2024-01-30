@@ -19,7 +19,7 @@ private:
   const char *exe;
   bool success;
   pid_t mTraceePid{0};
-  Column mSortType{Column::Path};
+  Column mSortType{ColPath};
   bool mReverseSorting{false};
   unsigned mDelay{1};
   char *const *mTraceeArgs{nullptr};

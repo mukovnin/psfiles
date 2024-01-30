@@ -12,6 +12,7 @@
 #include <limits>
 #include <linux/limits.h>
 #include <mutex>
+#include <numeric>
 #include <ostream>
 #include <poll.h>
 #include <signal.h>
@@ -21,6 +22,8 @@
 #include <sys/timerfd.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+size_t Output::colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 3, 12};
 
 Output::Output(unsigned delay) {
   eventFd = eventfd(0, 0);
@@ -172,10 +175,10 @@ void Output::update() {
     return;
   size_t maxPathWidth = it->path.size();
   size_t otherColsWidth =
-      6 * sizeColWidth + mmapColWidth + timeColWidth + indexColWidth;
+      std::accumulate(&colWidth[ColPath + 1], &colWidth[ColumnsCount], 0);
   if (maxWidth() < otherColsWidth + 10)
     return;
-  pathColWidth = std::min(maxPathWidth, maxWidth() - otherColsWidth);
+  colWidth[ColPath] = std::min(maxPathWidth, maxWidth() - otherColsWidth);
   printColumnHeaders();
   sort();
   auto [begin, end] = linesRange();
@@ -194,45 +197,48 @@ void Output::sort() {
     const auto &f = reverseSorting ? second : first;
     const auto &s = reverseSorting ? first : second;
     switch (sorting) {
-    case Column::Path:
+    case ColPath:
       return f.path < s.path;
-    case Column::WriteSize:
+    case ColWriteSize:
       return f.writeSize < s.writeSize;
-    case Column::ReadSize:
+    case ColReadSize:
       return f.readSize < s.readSize;
-    case Column::WriteCount:
+    case ColWriteCount:
       return f.writeCount < s.writeCount;
-    case Column::ReadCount:
+    case ColReadCount:
       return f.readCount < s.readCount;
-    case Column::OpenCount:
+    case ColOpenCount:
       return f.openCount < s.openCount;
-    case Column::CloseCount:
+    case ColCloseCount:
       return f.closeCount < s.closeCount;
-    case Column::MemoryMapped:
+    case ColMemoryMapped:
       return f.memoryMapped < s.memoryMapped;
-    case Column::LastAccess:
+    case ColLastAccess: {
       auto ft = f.lastAccess, st = s.lastAccess;
       return timegm(&ft) < timegm(&st);
     }
-    return true;
+    default:
+      return true;
+    }
   };
   std::stable_sort(list.begin(), list.end(), compare);
 }
 
 void Output::printEntry(size_t index, const Entry &entry) {
   auto &s = stream();
-  s << std::left << std::setw(indexColWidth) << index << std::right;
-  s << std::setw(pathColWidth) << truncString(entry.path, pathColWidth);
-  s << std::setw(sizeColWidth) << formatSize(entry.writeSize);
-  s << std::setw(sizeColWidth) << formatSize(entry.readSize);
-  s << std::setw(sizeColWidth) << entry.writeCount;
-  s << std::setw(sizeColWidth) << entry.readCount;
-  s << std::setw(sizeColWidth) << entry.openCount;
-  s << std::setw(sizeColWidth) << entry.closeCount;
-  s << std::setw(mmapColWidth) << (entry.memoryMapped ? 'y' : 'n');
+  s << std::left << std::setw(idxWidth) << index << std::right;
+  s << std::setw(colWidth[ColPath])
+    << truncString(entry.path, colWidth[ColPath]);
+  s << std::setw(colWidth[ColWriteSize]) << formatSize(entry.writeSize);
+  s << std::setw(colWidth[ColReadSize]) << formatSize(entry.readSize);
+  s << std::setw(colWidth[ColWriteCount]) << entry.writeCount;
+  s << std::setw(colWidth[ColReadCount]) << entry.readCount;
+  s << std::setw(colWidth[ColOpenCount]) << entry.openCount;
+  s << std::setw(colWidth[ColCloseCount]) << entry.closeCount;
+  s << std::setw(colWidth[ColMemoryMapped]) << (entry.memoryMapped ? 'y' : 'n');
   char timeString[50];
   std::strftime(timeString, sizeof(timeString), "%X", &entry.lastAccess);
-  s << std::setw(timeColWidth) << conv.from_bytes(timeString);
+  s << std::setw(colWidth[ColLastAccess]) << conv.from_bytes(timeString);
   s << std::endl;
 }
 
@@ -243,23 +249,14 @@ void Output::printColumnHeaders() {
         L"[S]:" + std::to_wstring(static_cast<unsigned>(sorting.load()) + 1) +
         L"," + (reverseSorting ? L"-" : L"+");
     s << ss;
-    s << std::setw(indexColWidth + pathColWidth - ss.size()) << L"[1]";
-    for (size_t i = 2; i < 8; ++i)
-      s << std::setw(sizeColWidth) << (L"[" + std::to_wstring(i) + L"]");
-    s << std::setw(mmapColWidth) << L"[8]";
-    s << std::setw(timeColWidth) << L"[9]";
+    s << std::setw(idxWidth + colWidth[ColPath] - ss.size()) << "[1]";
+    for (size_t i = ColPath + 1; i < ColumnsCount; ++i)
+        s << std::setw(colWidth[i]) << (L"[" + std::to_wstring(i + 1) + L"]");
     s << std::endl;
   }
-  s << std::setw(indexColWidth + pathColWidth)
-    << conv.from_bytes(columnToString(Column::Path));
-  for (auto col : {Column::WriteSize, Column::ReadSize, Column::WriteCount,
-                   Column::ReadCount, Column::OpenCount, Column::CloseCount}) {
-    s << std::setw(sizeColWidth) << conv.from_bytes(columnToString(col));
-  }
-  s << std::setw(mmapColWidth)
-    << conv.from_bytes(columnToString(Column::MemoryMapped));
-  s << std::setw(timeColWidth)
-    << conv.from_bytes(columnToString(Column::LastAccess));
+  s << std::setw(idxWidth + colWidth[ColPath]) << columnNames[ColPath];
+  for (size_t i = ColPath + 1; i < ColumnsCount; ++i)
+    s << std::setw(colWidth[i]) << columnNames[i];
   s << std::endl;
 }
 

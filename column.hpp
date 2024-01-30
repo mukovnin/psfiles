@@ -1,24 +1,20 @@
 #pragma once
 
-#include <optional>
 #include <string>
-#include <vector>
 
-enum class Column {
-  Path,
-  WriteSize,
-  ReadSize,
-  WriteCount,
-  ReadCount,
-  OpenCount,
-  CloseCount,
-  MemoryMapped,
-  LastAccess
+enum Column {
+  ColPath,
+  ColWriteSize,
+  ColReadSize,
+  ColWriteCount,
+  ColReadCount,
+  ColOpenCount,
+  ColCloseCount,
+  ColMemoryMapped,
+  ColLastAccess,
+  ColumnsCount
 };
 
-static constexpr unsigned maxColumnIndex{
-    static_cast<unsigned>(Column::LastAccess)};
-
-std::optional<Column> stringToColumn(const std::string &str);
-std::string columnToString(Column col);
-std::vector<std::string> columnNames();
+static const std::wstring columnNames[]{L"path",   L"wsize",  L"rsize",
+                                        L"wcount", L"rcount", L"ocount",
+                                        L"ccount", L"mm",     L"laccess"};

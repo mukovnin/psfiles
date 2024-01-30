@@ -47,14 +47,11 @@ private:
     bool memoryMapped{false};
     std::tm lastAccess{};
   };
-  static constexpr size_t indexColWidth{4};
-  static constexpr size_t sizeColWidth{7};
-  static constexpr size_t mmapColWidth{3};
-  static constexpr size_t timeColWidth{12};
-  size_t pathColWidth{0};
+  static size_t colWidth[ColumnsCount];
+  static constexpr size_t idxWidth{4};
   unsigned interval{1};
   std::vector<Entry> list;
-  std::atomic<Column> sorting{Column::Path};
+  std::atomic<Column> sorting{ColPath};
   std::atomic_bool reverseSorting{false};
   mutable std::mutex mtx;
   pid_t pid{0};

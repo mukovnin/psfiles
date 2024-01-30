@@ -91,7 +91,7 @@ std::optional<std::pair<Command, unsigned>> Input::charToCommand(char ch) {
   case 'N':
     return std::make_pair(Command::Up, 0);
   default:
-    if (ch > '0' && (unsigned)ch <= '0' + maxColumnIndex + 1)
+    if (ch > '0' && (unsigned)ch <= '0' + ColumnsCount)
       return std::make_pair(Command::SortingColumn, ch - '0' - 1);
   }
   return std::nullopt;

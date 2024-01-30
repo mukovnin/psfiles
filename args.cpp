@@ -1,6 +1,8 @@
 #include "args.hpp"
+#include "column.hpp"
 #include <algorithm>
 #include <charconv>
+#include <codecvt>
 #include <cstddef>
 #include <cstring>
 #include <getopt.h>
@@ -36,13 +38,15 @@ bool ArgsParser::parse(int argc, char **argv) {
       break;
     }
     case 's': {
-      if (std::string s = optarg; !s.empty()) {
+      std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
+      if (std::wstring s = conv.from_bytes(optarg); !s.empty()) {
         if (s.back() == '-') {
           s.pop_back();
           mReverseSorting = true;
         }
-        if (auto opt = stringToColumn(s)) {
-          mSortType = *opt;
+        auto beg = std::cbegin(columnNames), end = std::cend(columnNames);
+        if (auto it = std::find(beg, end, s); it != end) {
+          mSortType = static_cast<Column>(std::distance(beg, it));
           break;
         }
       }
@@ -97,9 +101,8 @@ void ArgsParser::printUsage() const {
   };
   std::cout << "Usage:\n" << exe << " [-os] -p | -c\n";
   std::for_each(argsList.cbegin(), argsList.cend(), print);
-  auto names = columnNames();
   std::cout << "Column names: ";
-  std::copy(names.cbegin(), names.cend(),
-            std::ostream_iterator<std::string>(std::cout, " "));
+  std::copy(std::cbegin(columnNames), std::cend(columnNames),
+            std::ostream_iterator<std::wstring, wchar_t>(std::wcout, L" "));
   std::cout << std::endl;
 }
