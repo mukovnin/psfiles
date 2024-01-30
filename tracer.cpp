@@ -85,13 +85,13 @@ bool Tracer::setPtraceOptions() {
   return true;
 }
 
-std::string Tracer::filePath(int fd) {
-  const char *invalid = "*INVALID FD*";
+std::wstring Tracer::filePath(int fd) {
+  const wchar_t *invalid = L"*INVALID FD*";
   if (pid <= 0)
     return {};
   if (fd < 0)
     return invalid;
-  const char *std[] = {"*STDIN*", "*STDOUT*", "*STDERR*"};
+  const wchar_t *std[] = {L"*STDIN*", L"*STDOUT*", L"*STDERR*"};
   if (fd <= 2)
     return std[fd];
   std::string linkPath =
@@ -102,11 +102,11 @@ std::string Tracer::filePath(int fd) {
     return invalid;
   }
   if (size_t len = out.find('\0'); len != std::string::npos)
-      out.resize(len);
-  return out;
+    out.resize(len);
+  return conv.from_bytes(out);
 }
 
-std::string Tracer::getCmdLine() {
+std::wstring Tracer::getCmdLine() {
   std::string path = "/proc/" + std::to_string(pid) + "/cmdline";
   std::ifstream file(path);
   if (!file)
@@ -115,7 +115,7 @@ std::string Tracer::getCmdLine() {
   std::string str;
   std::transform(beg, end, std::back_inserter(str),
                  [](char c) { return c ? c : ' '; });
-  return str;
+  return conv.from_bytes(str);
 }
 
 void Tracer::signalHandler(int) { terminate = 1; }
@@ -244,4 +244,4 @@ bool Tracer::loop() {
 
 pid_t Tracer::traceePid() const { return pid; }
 
-std::string Tracer::traceeCmdLine() const { return cmdLine; }
+std::wstring Tracer::traceeCmdLine() const { return cmdLine; }

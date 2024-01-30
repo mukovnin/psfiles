@@ -4,11 +4,13 @@
 #include "output.hpp"
 #include "tracer.hpp"
 #include <cstdlib>
+#include <locale>
 #include <memory>
 #include <pthread.h>
 #include <unistd.h>
 
 int main(int argc, char **argv) {
+  std::locale::global(std::locale(""));
   ArgsParser args(argc, argv);
   if (!args)
     return EXIT_FAILURE;

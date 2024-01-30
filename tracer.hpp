@@ -1,6 +1,8 @@
 #pragma once
 
 #include "event.hpp"
+#include <codecvt>
+#include <locale>
 #include <signal.h>
 #include <string>
 #include <sys/types.h>
@@ -8,10 +10,11 @@
 class Tracer {
 private:
   pid_t pid{0};
-  std::string cmdLine;
+  std::wstring cmdLine;
+  std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
   bool withinSyscall{false};
   bool spawned{false}, attached{false};
-  std::string closingFile;
+  std::wstring closingFile;
   static sig_atomic_t terminate;
   EventCallback callback;
   bool iteration();
@@ -19,8 +22,8 @@ private:
   bool spawnTracee(char *const *argv);
   bool setPtraceOptions();
   bool setSignalHandler();
-  std::string filePath(int fd);
-  std::string getCmdLine();
+  std::wstring filePath(int fd);
+  std::wstring getCmdLine();
   static void signalHandler(int);
 
 public:
@@ -29,5 +32,5 @@ public:
   ~Tracer();
   bool loop();
   pid_t traceePid() const;
-  std::string traceeCmdLine() const;
+  std::wstring traceeCmdLine() const;
 };

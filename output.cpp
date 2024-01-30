@@ -124,7 +124,8 @@ void Output::toggleSortingOrder() {
   update();
 }
 
-void Output::setProcessInfo(pid_t pid, const std::string &cmd) {
+void Output::setProcessInfo(pid_t pid, const std::wstring &cmd) {
+  std::lock_guard lck(mtx);
   this->pid = pid;
   this->cmd = cmd;
 }
@@ -215,7 +216,7 @@ void Output::sort() {
 void Output::printEntry(size_t index, const Entry &entry) {
   auto &s = stream();
   s << std::left << std::setw(indexColWidth) << index << std::right;
-  s << std::setw(pathColWidth) << formatPath(entry.path);
+  s << std::setw(pathColWidth) << truncString(entry.path, pathColWidth);
   s << std::setw(sizeColWidth) << formatSize(entry.writeSize);
   s << std::setw(sizeColWidth) << formatSize(entry.readSize);
   s << std::setw(sizeColWidth) << entry.writeCount;
@@ -224,35 +225,37 @@ void Output::printEntry(size_t index, const Entry &entry) {
   s << std::setw(sizeColWidth) << entry.closeCount;
   char timeString[50];
   std::strftime(timeString, sizeof(timeString), "%X", &entry.lastAccess);
-  s << std::setw(timeColWidth) << timeString;
+  s << std::setw(timeColWidth) << conv.from_bytes(timeString);
   s << std::endl;
 }
 
 void Output::printColumnHeaders() {
   auto &s = stream();
   if (visibleColumnNumbers()) {
-    std::string ss = "[S]orting:" +
-                     std::to_string(static_cast<unsigned>(sorting.load()) + 1) +
-                     "," + (reverseSorting ? "-" : "+");
+    std::wstring ss =
+        L"[S]:" + std::to_wstring(static_cast<unsigned>(sorting.load()) + 1) +
+        L"," + (reverseSorting ? L"-" : L"+");
     s << ss;
-    s << std::setw(indexColWidth + pathColWidth - ss.size()) << "[1]";
+    s << std::setw(indexColWidth + pathColWidth - ss.size()) << L"[1]";
     for (size_t i = 2; i < 8; ++i)
-      s << std::setw(sizeColWidth) << ("[" + std::to_string(i) + "]");
-    s << std::setw(timeColWidth) << "[8]";
+      s << std::setw(sizeColWidth) << (L"[" + std::to_wstring(i) + L"]");
+    s << std::setw(timeColWidth) << L"[8]";
     s << std::endl;
   }
-  s << std::setw(indexColWidth + pathColWidth) << columnToString(Column::Path);
+  s << std::setw(indexColWidth + pathColWidth)
+    << conv.from_bytes(columnToString(Column::Path));
   for (auto col : {Column::WriteSize, Column::ReadSize, Column::WriteCount,
                    Column::ReadCount, Column::OpenCount, Column::CloseCount}) {
-    s << std::setw(sizeColWidth) << columnToString(col);
+    s << std::setw(sizeColWidth) << conv.from_bytes(columnToString(col));
   }
-  s << std::setw(timeColWidth) << columnToString(Column::LastAccess);
+  s << std::setw(timeColWidth)
+    << conv.from_bytes(columnToString(Column::LastAccess));
   s << std::endl;
 }
 
 void Output::printProcessInfo() {
-  stream() << std::setw(20) << "PID: " << pid << std::endl
-           << std::setw(20) << "Command line: " << cmd << std::endl;
+  stream() << std::setw(20) << L"PID: " << pid << std::endl
+           << std::setw(20) << L"Command line: " << cmd << std::endl;
 }
 
 std::tm Output::now() const {
@@ -261,24 +264,27 @@ std::tm Output::now() const {
   return *std::localtime(&time);
 }
 
-std::string Output::formatPath(const std::string &path) const {
-  const std::string fill{"..."};
-  ssize_t strLen = path.size();
-  ssize_t delta = (ssize_t)pathColWidth - strLen;
-  if (delta >= 0)
-    return path;
-  size_t pos = strLen - std::max(0L, strLen + delta - (ssize_t)fill.length());
-  return fill + path.substr(pos);
+std::wstring Output::truncString(const std::wstring &str,
+                                 size_t maxSize) const {
+  const std::wstring fill{L"..."};
+  const size_t fillLen = fill.size();
+  const size_t strLen = str.size();
+  if (maxSize >= strLen)
+    return str;
+  if (maxSize <= fillLen)
+    return {};
+  size_t pos = strLen + fillLen - maxSize;
+  return fill + str.substr(pos);
 }
 
-std::string Output::formatSize(size_t size) const {
-  const std::string suffixes = "bKMGT";
+std::wstring Output::formatSize(size_t size) const {
+  const std::wstring suffixes = L"bKMGT";
   size_t i = 0;
   while (size > 1024 && i < suffixes.size() - 1) {
     size /= 1024;
     ++i;
   }
-  return std::to_string(size) + suffixes[i];
+  return std::to_wstring(size) + suffixes[i];
 }
 
 size_t Output::headerHeight() {
@@ -292,7 +298,7 @@ FileOutput::FileOutput(const char *path, unsigned delay)
 
 FileOutput::~FileOutput() { stop(); }
 
-std::ostream &FileOutput::stream() { return file; }
+std::wostream &FileOutput::stream() { return file; }
 
 void FileOutput::clear() { file.seekp(0); }
 
@@ -338,7 +344,7 @@ void TerminalOutput::lineDown() {
   }
 }
 
-std::ostream &TerminalOutput::stream() { return std::cout; }
+std::wostream &TerminalOutput::stream() { return std::wcout; }
 
 void TerminalOutput::clear() {
   escape("H");

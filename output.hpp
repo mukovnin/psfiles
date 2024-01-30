@@ -3,9 +3,11 @@
 #include "column.hpp"
 #include "event.hpp"
 #include <atomic>
+#include <codecvt>
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <locale>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -17,7 +19,7 @@ public:
   virtual ~Output();
   void setSorting(Column column);
   void toggleSortingOrder();
-  void setProcessInfo(pid_t pid, const std::string &cmd);
+  void setProcessInfo(pid_t pid, const std::wstring &cmd);
   void handleEvent(const EventInfo &event);
 
 protected:
@@ -27,7 +29,7 @@ protected:
   void start();
   void stop();
   size_t headerHeight();
-  virtual std::ostream &stream() = 0;
+  virtual std::wostream &stream() = 0;
   virtual void clear() = 0;
   virtual size_t maxWidth() = 0;
   virtual std::pair<size_t, size_t> linesRange() = 0;
@@ -35,7 +37,7 @@ protected:
 
 private:
   struct Entry {
-    std::string path;
+    std::wstring path;
     size_t writeSize{0};
     size_t readSize{0};
     size_t writeCount{0};
@@ -54,17 +56,18 @@ private:
   std::atomic_bool reverseSorting{false};
   mutable std::mutex mtx;
   pid_t pid{0};
-  std::string cmd;
+  std::wstring cmd;
   std::thread thread;
   int eventFd{-1}, timerFd{-1};
+  std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
   void threadRoutine();
   void sort();
   void printEntry(size_t index, const Entry &entry);
   void printProcessInfo();
   void printColumnHeaders();
   std::tm now() const;
-  std::string formatPath(const std::string &path) const;
-  std::string formatSize(size_t size) const;
+  std::wstring truncString(const std::wstring &str, size_t maxSize) const;
+  std::wstring formatSize(size_t size) const;
 };
 
 class FileOutput : public Output {
@@ -73,14 +76,14 @@ public:
   virtual ~FileOutput();
 
 protected:
-  virtual std::ostream &stream() override;
+  virtual std::wostream &stream() override;
   virtual void clear() override;
   virtual size_t maxWidth() override;
   virtual std::pair<size_t, size_t> linesRange() override;
   virtual bool visibleColumnNumbers() override;
 
 private:
-  std::ofstream file;
+  std::wofstream file;
 };
 
 class TerminalOutput : public Output {
@@ -91,7 +94,7 @@ public:
   void lineDown();
 
 protected:
-  virtual std::ostream &stream() override;
+  virtual std::wostream &stream() override;
   virtual void clear() override;
   virtual size_t maxWidth() override;
   virtual std::pair<size_t, size_t> linesRange() override;
