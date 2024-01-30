@@ -184,6 +184,7 @@ bool Tracer::iteration() {
       callback(EventInfo{Event::Write, filePath(rdi), (size_t)rax});
       break;
     }
+    case __NR_creat:
     case __NR_open:
     case __NR_openat: {
       callback(EventInfo{Event::Open, filePath(rax)});
