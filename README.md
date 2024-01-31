@@ -2,12 +2,11 @@
 
 **Psfiles** is a simple utility to view file I/O activity of Linux processes.
 Only regular *read(v)*, *write(v)*, *open(at)*, *close* syscalls are traced.
-No mmap etc support currently.
+If the file has been memory mapped, this utility will not show the number of bytes read or written.
 
 # Features
 
-* start new process and trace it file I/O activity
-* attach to existing process and trace it
+* start new process or attach to existing and trace it file I/O activity
 * output results to standard output or save results to file
 * custom results sorting
 
@@ -15,22 +14,37 @@ No mmap etc support currently.
 
 * **[--output, -o]:** path to output file. Default: *stdout*.
 * **[--delay, -d]:** interval (seconds) between file list updates. Default: *1*.
-* **[--sort, -s]:** column name for sorting results (append "-" to column name to sorting in descending order).
-Column names: *path wsize rsize wcount rcount ocount ccount laccess*. Default: *path*.
+* **[--sort, -s]:** column name for sorting results (append "-" to column name to sorting in descending order). Default: *path*.
 * **--pid, -p:** attach to existing process with specified *pid*.
-* **--cmdline, -c:** spawn new process with specified *cmdline*. Incompatible with --pid option. It should be the last option.
+* **--cmdline, -c:** spawn new process with specified *cmdline*. Incompatible with **--pid** option. It should be the last option.
 
-# Usage
+# Columns
+* **path** - path to file,
+* **wsize** - write size in bytes,
+* **rsize** - read size in bytes,
+* **wcount** - write/writev syscalls count,
+* **rcount** - read/readv syscalls count,
+* **ocount** - open/openat/creat syscalls count,
+* **ccount** - close syscalls count,
+* **mm** - indicates whether mmap was called for this file,
+* **laccess** - time of the last system call listed above.
 
-Start new process or attach to existing process:
+# Usage examples
 
-* <code>psfiles -d 5 -s wsize- -c emacs /home/user/cpp/main.cpp</code>
-* <code>psfiles -d 30 -s path -o output.txt -p $(pidof emacs)</code>
+Start new process, sort descending by write size, output to file, update output every minute:
+* <code>psfiles -d 60 -s wsize- -o output.txt -c emacs /home/user/cpp/main.cpp</code>
 
-If --output option was not specified, keyboard control is available:
+Attach to existing process, sort by path, output to stdout, update output every second:
+* <code>psfiles -p $(pidof emacs)</code>
 
-* **1 - 8:** sort by specified column (1 - path, 2 - wsize, etc)
+# Control
+
+If **--output** option was not specified, keyboard control is available:
+
+* **1 - 9:** sort by specified column (1 - path, 2 - wsize, etc)
 * **s:** toggle sorting order
+* **n:** show next page (scroll down)
+* **p:** show previous page (scroll up)
 * **q:** quit
 
 # Screenshot
@@ -39,10 +53,9 @@ If --output option was not specified, keyboard control is available:
 
 # How to build?
 
-* clone this repository: <code>git clone https://github.com/mukovnin/psfiles</code>
-* change current directory to cloned repository: <code>cd psfiles</code>
-* create build directory, i.e. <code>mkdir build</code>
-* run <code>cmake . -B build</code>
-* change current directory: <code>cd build</code>
-* run <code>make</code>
+* <code>git clone https://github.com/mukovnin/psfiles</code>
+* <code>cd psfiles</code>
+* <code>cmake . -B build</code>
+* <code>cd build</code>
+* <code>make</code>
 * if needed, run <code>make install</code>
