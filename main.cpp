@@ -10,7 +10,9 @@
 #include <unistd.h>
 
 int main(int argc, char **argv) {
-  std::locale::global(std::locale(""));
+  auto locale = std::locale::global(std::locale(""));
+  std::unique_ptr<std::locale, void (*)(std::locale *)> loc(
+      &locale, [](auto l) { std::locale::global(*l); });
   ArgsParser args(argc, argv);
   if (!args)
     return EXIT_FAILURE;
