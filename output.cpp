@@ -134,6 +134,10 @@ void Output::setProcessInfo(pid_t pid, const std::wstring &cmd) {
 }
 
 void Output::handleEvent(const EventInfo &info) {
+  if (info.path.empty())
+    return;
+  if (auto c = info.path.front(); c != '/' && c != '*')
+    return;
   std::lock_guard lck(mtx);
   auto it = std::find_if(list.begin(), list.end(),
                          [&](auto &&item) { return item.path == info.path; });
