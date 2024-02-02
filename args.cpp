@@ -1,5 +1,6 @@
 #include "args.hpp"
 #include "column.hpp"
+#include "log.hpp"
 #include <algorithm>
 #include <charconv>
 #include <codecvt>
@@ -50,32 +51,45 @@ bool ArgsParser::parse(int argc, char **argv) {
           break;
         }
       }
+      LOGE("Unknown column name: #.", optarg);
       return false;
     }
     case 'd': {
       const char *first = optarg, *last = optarg + strlen(optarg);
       auto [ptr, ec] = std::from_chars(first, last, mDelay);
-      if (!(ec == std::errc() && ptr == last))
+      if (!(ec == std::errc() && ptr == last && mDelay)) {
+        LOGE("Invalid --delay option: must be a non-negative integer.");
         return false;
+      }
       break;
     }
     case 'p': {
       const char *first = optarg, *last = optarg + strlen(optarg);
       auto [ptr, ec] = std::from_chars(first, last, mTraceePid);
-      if (!(ec == std::errc() && ptr == last && mTraceePid != getpid()))
+      if (!(ec == std::errc() && ptr == last && mTraceePid > 0 &&
+            mTraceePid != getpid())) {
+        LOGE("Invalid --pid option: must be a positive integer not equal "
+             "to current pid.");
         return false;
+      }
       break;
     }
     case 'c': {
       mTraceeArgs = argv + optind - 1;
-      return true;
+      goto final_check;
     }
     default: {
       return false;
     }
     }
   }
-  return static_cast<bool>(mTraceePid) != static_cast<bool>(mTraceeArgs);
+final_check:
+  if (static_cast<bool>(mTraceePid) == static_cast<bool>(mTraceeArgs)) {
+    LOGE(
+        "One and only one of --pid and --cmdline options should be specified.");
+    return false;
+  }
+  return true;
 }
 
 pid_t ArgsParser::traceePid() const { return mTraceePid; }
