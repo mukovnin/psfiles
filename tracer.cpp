@@ -52,7 +52,7 @@ Tracer::Tracer(char *const *argv, EventCallback cb) : callback(cb) {
     }
     cmdLine = getCmdLine();
     if (setPtraceOptions())
-      LOGI("Tracee successfully started (PID #).", pid);
+      LOGI("Forked (PID #).", pid);
   }
 }
 
@@ -122,10 +122,9 @@ std::wstring Tracer::getCmdLine() {
 void Tracer::signalHandler(int) { terminate = 1; }
 
 bool Tracer::setSignalHandler() {
-  struct sigaction act;
+  struct sigaction act {};
   sigemptyset(&act.sa_mask);
   act.sa_handler = &Tracer::signalHandler;
-  act.sa_flags = 0;
   if (sigaction(SIGINT, &act, nullptr) == 0 &&
       sigaction(SIGTERM, &act, nullptr) == 0) {
     return true;
@@ -153,13 +152,12 @@ bool Tracer::spawnTracee(char *const *argv) {
 bool Tracer::iteration() {
   if (!waitForSyscall())
     return false;
-
   struct user_regs_struct regs;
-
   if (ptrace(PTRACE_GETREGS, pid, 0, &regs) < 0) {
     LOGPE("ptrace (GETREGS)");
     return false;
   }
+
   // Syscall enter:
   //  orig_rax - syscall number
   //       rdi - fd (read, write, close)
@@ -206,7 +204,6 @@ bool Tracer::iteration() {
     }
     }
   }
-
   withinSyscall = !withinSyscall;
   return true;
 }
@@ -233,13 +230,17 @@ bool Tracer::waitForSyscall() {
     }
     // (WSTOPSIG(status) & 0x80) != 0 in syscall traps
     // if PTRACE_O_TRACESYSGOOD option used
-    if (WIFSTOPPED(status) && WSTOPSIG(status) & 0x80)
+    if (WIFSTOPPED(status) && (WSTOPSIG(status) & 0x80))
       return true;
     if (WIFEXITED(status)) {
       LOGE("Tracee exited.");
       return false;
     }
-    sig = (WIFSTOPPED(status) && WSTOPSIG(status) == SIGCHLD) ? SIGCHLD : 0;
+    sig = 0;
+    if (WIFSTOPPED(status)) {
+      if (auto ss = WSTOPSIG(status); ss != SIGTRAP)
+        sig = ss;
+    }
   }
 }
 

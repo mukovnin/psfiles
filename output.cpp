@@ -1,39 +1,30 @@
 #include "output.hpp"
-#include "column.hpp"
-#include "event.hpp"
 #include "log.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <ctime>
 #include <iomanip>
-#include <iostream>
 #include <limits>
 #include <linux/limits.h>
-#include <mutex>
 #include <numeric>
-#include <ostream>
 #include <poll.h>
 #include <signal.h>
-#include <string>
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <sys/timerfd.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-size_t Output::colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 3, 12};
-
 Output::Output(unsigned delay) {
-  eventFd = eventfd(0, 0);
-  if (eventFd == -1) {
+  if ((eventFd = eventfd(0, 0)) == -1) {
     LOGPE("eventfd");
     return;
   }
-  timerFd = timerfd_create(CLOCK_MONOTONIC, 0);
-  if (timerFd == -1) {
+  if ((timerFd = timerfd_create(CLOCK_MONOTONIC, 0)) == -1) {
     LOGPE("timerfd_create");
+    close(eventFd);
+    eventFd = -1;
     return;
   }
   itimerspec ts{.it_interval = {.tv_sec = delay, .tv_nsec = 0},
@@ -54,17 +45,18 @@ Output::~Output() {
 }
 
 void Output::threadRoutine() {
-  pollfd pfds[2]{{.fd = timerFd, .events = POLLIN, .revents = 0},
-                 {.fd = eventFd, .events = POLLIN, .revents = 0}};
+  constexpr size_t nfds{2};
+  pollfd pfds[nfds]{{.fd = timerFd, .events = POLLIN, .revents = 0},
+                    {.fd = eventFd, .events = POLLIN, .revents = 0}};
   bool stop{false};
   while (!stop) {
-    if (int ret = poll(pfds, 2, -1); ret == -1) {
+    if (int ret = poll(pfds, nfds, -1); ret == -1) {
       if (errno == EINTR)
         continue;
       LOGPE("poll");
       stop = true;
     } else {
-      for (size_t i = 0; !stop && i < 2; ++i) {
+      for (size_t i = 0; !stop && i < nfds; ++i) {
         int fd = pfds[i].fd;
         short revs = pfds[i].revents;
         if (revs & POLLIN) {
@@ -89,7 +81,7 @@ void Output::threadRoutine() {
           LOGE("Received POLLERR event.");
           stop = true;
         } else if (revs) {
-          LOGE("Received unexpected poll event: ##.", std::hex, revs);
+          LOGE("Received unexpected poll event: #0x#.", std::hex, revs);
           stop = true;
         }
       }
@@ -178,9 +170,9 @@ void Output::update() {
   if (it == list.cend())
     return;
   size_t maxPathWidth = it->path.size();
-  size_t otherColsWidth =
-      std::accumulate(&colWidth[ColPath + 1], &colWidth[ColumnsCount], 0);
-  if (maxWidth() < otherColsWidth + 10)
+  size_t otherColsWidth = std::accumulate(&colWidth[ColPath + 1],
+                                          &colWidth[ColumnsCount], idxWidth);
+  if (maxWidth() < otherColsWidth + minPathColWidth)
     return;
   colWidth[ColPath] = std::min(maxPathWidth, maxWidth() - otherColsWidth);
   printColumnHeaders();
@@ -232,7 +224,7 @@ void Output::printEntry(size_t index, const Entry &entry) {
   auto &s = stream();
   s << std::left << std::setw(idxWidth) << index << std::right;
   s << std::setw(colWidth[ColPath])
-    << truncString(entry.path, colWidth[ColPath]);
+    << truncString(entry.path, colWidth[ColPath], true);
   s << std::setw(colWidth[ColWriteSize]) << formatSize(entry.writeSize);
   s << std::setw(colWidth[ColReadSize]) << formatSize(entry.readSize);
   s << std::setw(colWidth[ColWriteCount]) << entry.writeCount;
@@ -255,7 +247,7 @@ void Output::printColumnHeaders() {
     s << ss;
     s << std::setw(idxWidth + colWidth[ColPath] - ss.size()) << "[1]";
     for (size_t i = ColPath + 1; i < ColumnsCount; ++i)
-        s << std::setw(colWidth[i]) << (L"[" + std::to_wstring(i + 1) + L"]");
+      s << std::setw(colWidth[i]) << (L"[" + std::to_wstring(i + 1) + L"]");
     s << std::endl;
   }
   s << std::setw(idxWidth + colWidth[ColPath]) << columnNames[ColPath];
@@ -265,8 +257,12 @@ void Output::printColumnHeaders() {
 }
 
 void Output::printProcessInfo() {
-  stream() << std::setw(20) << L"PID: " << pid << std::endl
-           << std::setw(20) << L"Command line: " << cmd << std::endl;
+  constexpr size_t left{20};
+  if (maxWidth() <= left)
+    return;
+  stream() << std::setw(left) << L"PID: " << pid << std::endl
+           << std::setw(left) << L"Command line: "
+           << truncString(cmd, maxWidth() - left, false) << std::endl;
 }
 
 std::tm Output::now() const {
@@ -275,8 +271,8 @@ std::tm Output::now() const {
   return *std::localtime(&time);
 }
 
-std::wstring Output::truncString(const std::wstring &str,
-                                 size_t maxSize) const {
+std::wstring Output::truncString(const std::wstring &str, size_t maxSize,
+                                 bool left) const {
   const std::wstring fill{L"..."};
   const size_t fillLen = fill.size();
   const size_t strLen = str.size();
@@ -284,8 +280,11 @@ std::wstring Output::truncString(const std::wstring &str,
     return str;
   if (maxSize <= fillLen)
     return {};
-  size_t pos = strLen + fillLen - maxSize;
-  return fill + str.substr(pos);
+  if (left) {
+    size_t pos = strLen + fillLen - maxSize;
+    return fill + str.substr(pos);
+  }
+  return str.substr(0, maxSize - fillLen) + fill;
 }
 
 std::wstring Output::formatSize(size_t size) const {
@@ -298,7 +297,7 @@ std::wstring Output::formatSize(size_t size) const {
   return std::to_wstring(size) + suffixes[i];
 }
 
-size_t Output::headerHeight() {
+size_t Output::headerHeight() const {
   return fixedHeaderHeight + visibleColumnNumbers();
 }
 
@@ -313,13 +312,15 @@ std::wostream &FileOutput::stream() { return file; }
 
 void FileOutput::clear() { file.seekp(0); }
 
-size_t FileOutput::maxWidth() { return std::numeric_limits<size_t>::max(); }
+size_t FileOutput::maxWidth() const {
+  return std::numeric_limits<size_t>::max();
+}
 
-std::pair<size_t, size_t> FileOutput::linesRange() {
+std::pair<size_t, size_t> FileOutput::linesRange() const {
   return {0, std::numeric_limits<size_t>::max()};
 }
 
-bool FileOutput::visibleColumnNumbers() { return false; }
+bool FileOutput::visibleColumnNumbers() const { return false; }
 
 size_t TerminalOutput::nCols;
 size_t TerminalOutput::nRows;
@@ -341,7 +342,7 @@ void TerminalOutput::updateWindowSize() {
   nRows = ws.ws_row ? ws.ws_row - 1 : 0;
 }
 
-void TerminalOutput::pageUp() {
+void TerminalOutput::pageDown() {
   size_t m = nRows + scrollDelta;
   size_t n = count() + headerHeight();
   if (m < n && nRows > headerHeight()) {
@@ -350,7 +351,7 @@ void TerminalOutput::pageUp() {
   }
 }
 
-void TerminalOutput::pageDown() {
+void TerminalOutput::pageUp() {
   if (nRows > headerHeight()) {
     size_t n = std::min(scrollDelta, nRows - headerHeight());
     if (n) {
@@ -367,12 +368,12 @@ void TerminalOutput::clear() {
   escape("J");
 }
 
-size_t TerminalOutput::maxWidth() { return nCols; }
+size_t TerminalOutput::maxWidth() const { return nCols; }
 
 void TerminalOutput::escape(const char *cmd) { stream() << "\033[" << cmd; }
 
-std::pair<size_t, size_t> TerminalOutput::linesRange() {
+std::pair<size_t, size_t> TerminalOutput::linesRange() const {
   return {scrollDelta, scrollDelta + nRows - headerHeight()};
 }
 
-bool TerminalOutput::visibleColumnNumbers() { return true; }
+bool TerminalOutput::visibleColumnNumbers() const { return true; }

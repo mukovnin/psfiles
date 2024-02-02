@@ -13,13 +13,15 @@ int main(int argc, char **argv) {
   auto locale = std::locale::global(std::locale(""));
   std::unique_ptr<std::locale, void (*)(std::locale *)> loc(
       &locale, [](auto l) { std::locale::global(*l); });
+
   ArgsParser args(argc, argv);
   if (!args)
     return EXIT_FAILURE;
+
+  pthread_t mainThread = pthread_self();
   std::unique_ptr<Input> input;
   std::unique_ptr<Output> output;
-  const char *file = args.outputFile();
-  pthread_t mainThread = pthread_self();
+
   auto inCallback = [&](Command cmd, unsigned arg) {
     switch (cmd) {
     case Command::Quit:
@@ -39,18 +41,24 @@ int main(int argc, char **argv) {
       break;
     }
   };
+
   auto outCallback = [&](const EventInfo &ei) { output->handleEvent(ei); };
-  if (file) {
+
+  if (auto file = args.outputFile()) {
     output.reset(new FileOutput(file, args.delay()));
   } else {
     output.reset(new TerminalOutput(args.delay()));
     input.reset(new Input(inCallback));
   }
+
   output->setSorting(args.sortType());
   if (args.reverseSorting())
     output->toggleSortingOrder();
+
   Tracer tracer = args.traceeArgs() ? Tracer(args.traceeArgs(), outCallback)
                                     : Tracer(args.traceePid(), outCallback);
+
   output->setProcessInfo(tracer.traceePid(), tracer.traceeCmdLine());
+
   return tracer.loop() ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -29,6 +29,10 @@ private:
 public:
   Tracer(pid_t pid, EventCallback cb);
   Tracer(char *const *argv, EventCallback cb);
+  Tracer(const Tracer &) = delete;
+  Tracer &operator=(const Tracer &) = delete;
+  Tracer(Tracer &&) = delete;
+  Tracer &operator=(Tracer &&) = delete;
   ~Tracer();
   bool loop();
   pid_t traceePid() const;

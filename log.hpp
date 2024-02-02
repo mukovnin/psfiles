@@ -44,10 +44,10 @@ void logLine(std::ostringstream &str, const char *fmt, T &&val, Ts &&...args) {
 template <typename... Ts>
 void logImpl(const char *path, int line, LogType type, const char *fmt,
              Ts &&...args) {
-  std::ostringstream s;
   auto time =
       std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
   auto localtime = std::localtime(&time);
+  std::ostringstream s;
   s << "[" << std::put_time(localtime, "%F %X") << "] ";
   s << "[" << std::setw(4) << logTypes[type] << "] ";
   s << "[" << std::setw(10) << extractFileName(path) << ": " << std::setw(3)

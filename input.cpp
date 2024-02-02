@@ -41,18 +41,20 @@ Input::~Input() {
         LOGE("eventfd: partial write");
     } else {
       thread.join();
-      close(event);
     }
   }
+  if (event != -1)
+    close(event);
   if (terminalConfigured && tcsetattr(0, TCSANOW, &termOrigConf) != 0)
     LOGPE("tcsetattr");
 }
 
 void Input::routine() {
-  pollfd pfds[2]{{.fd = STDIN_FILENO, .events = POLLIN, .revents = 0},
-                 {.fd = event, .events = POLLIN, .revents = 0}};
-  while (!pfds[1].revents) {
-    if (int ret = poll(pfds, sizeof(pfds) / sizeof(pfds[0]), -1); ret == -1) {
+  constexpr size_t nfds{2};
+  pollfd pfds[nfds]{{.fd = STDIN_FILENO, .events = POLLIN, .revents = 0},
+                    {.fd = event, .events = POLLIN, .revents = 0}};
+  while (!pfds[nfds - 1].revents) {
+    if (int ret = poll(pfds, nfds, -1); ret == -1) {
       if (errno == EINTR)
         continue;
       LOGPE("poll");
@@ -73,7 +75,7 @@ void Input::routine() {
         LOGE("Received POLLERR event.");
         break;
       } else if (revs) {
-        LOGE("Received unexpected poll event: ##.", std::hex, revs);
+        LOGE("Received unexpected poll event: #0x#.", std::hex, revs);
         break;
       }
     }
@@ -87,9 +89,9 @@ std::optional<std::pair<Command, unsigned>> Input::charToCommand(char ch) {
   case 'S':
     return std::make_pair(Command::SortingOrder, 0);
   case 'P':
-    return std::make_pair(Command::Down, 0);
-  case 'N':
     return std::make_pair(Command::Up, 0);
+  case 'N':
+    return std::make_pair(Command::Down, 0);
   default:
     if (ch > '0' && (unsigned)ch <= '0' + ColumnsCount)
       return std::make_pair(Command::SortingColumn, ch - '0' - 1);

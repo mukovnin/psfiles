@@ -4,6 +4,7 @@
 #include "event.hpp"
 #include <atomic>
 #include <codecvt>
+#include <cstddef>
 #include <ctime>
 #include <fstream>
 #include <iostream>
@@ -23,17 +24,16 @@ public:
   void handleEvent(const EventInfo &event);
 
 protected:
-  static constexpr size_t fixedHeaderHeight{3};
   void update();
-  size_t count() const;
   void start();
   void stop();
-  size_t headerHeight();
+  size_t count() const;
+  size_t headerHeight() const;
   virtual std::wostream &stream() = 0;
   virtual void clear() = 0;
-  virtual size_t maxWidth() = 0;
-  virtual std::pair<size_t, size_t> linesRange() = 0;
-  virtual bool visibleColumnNumbers() = 0;
+  virtual size_t maxWidth() const = 0;
+  virtual std::pair<size_t, size_t> linesRange() const = 0;
+  virtual bool visibleColumnNumbers() const = 0;
 
 private:
   struct Entry {
@@ -47,15 +47,16 @@ private:
     bool memoryMapped{false};
     std::tm lastAccess{};
   };
-  static size_t colWidth[ColumnsCount];
   static constexpr size_t idxWidth{4};
-  unsigned interval{1};
-  std::vector<Entry> list;
+  static constexpr size_t fixedHeaderHeight{3};
+  static constexpr size_t minPathColWidth{10};
+  size_t colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 3, 12};
   std::atomic<Column> sorting{ColPath};
   std::atomic_bool reverseSorting{false};
-  mutable std::mutex mtx;
   pid_t pid{0};
   std::wstring cmd;
+  std::vector<Entry> list;
+  mutable std::mutex mtx;
   std::thread thread;
   int eventFd{-1}, timerFd{-1};
   std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
@@ -65,7 +66,8 @@ private:
   void printProcessInfo();
   void printColumnHeaders();
   std::tm now() const;
-  std::wstring truncString(const std::wstring &str, size_t maxSize) const;
+  std::wstring truncString(const std::wstring &str, size_t maxSize,
+                           bool left) const;
   std::wstring formatSize(size_t size) const;
 };
 
@@ -77,9 +79,9 @@ public:
 protected:
   virtual std::wostream &stream() override;
   virtual void clear() override;
-  virtual size_t maxWidth() override;
-  virtual std::pair<size_t, size_t> linesRange() override;
-  virtual bool visibleColumnNumbers() override;
+  virtual size_t maxWidth() const override;
+  virtual std::pair<size_t, size_t> linesRange() const override;
+  virtual bool visibleColumnNumbers() const override;
 
 private:
   std::wofstream file;
@@ -95,9 +97,9 @@ public:
 protected:
   virtual std::wostream &stream() override;
   virtual void clear() override;
-  virtual size_t maxWidth() override;
-  virtual std::pair<size_t, size_t> linesRange() override;
-  virtual bool visibleColumnNumbers() override;
+  virtual size_t maxWidth() const override;
+  virtual std::pair<size_t, size_t> linesRange() const override;
+  virtual bool visibleColumnNumbers() const override;
 
 private:
   static size_t nCols;
