@@ -156,6 +156,7 @@ void Output::handleEvent(const EventInfo &info) {
     item.memoryMapped = true;
     break;
   }
+  item.lastThread = info.pid;
   item.lastAccess = now();
 }
 
@@ -209,6 +210,8 @@ void Output::sort() {
       return f.closeCount < s.closeCount;
     case ColMemoryMapped:
       return f.memoryMapped < s.memoryMapped;
+    case ColLastThread:
+      return f.lastThread < s.lastThread;
     case ColLastAccess: {
       auto ft = f.lastAccess, st = s.lastAccess;
       return timegm(&ft) < timegm(&st);
@@ -232,6 +235,7 @@ void Output::printEntry(size_t index, const Entry &entry) {
   s << std::setw(colWidth[ColOpenCount]) << entry.openCount;
   s << std::setw(colWidth[ColCloseCount]) << entry.closeCount;
   s << std::setw(colWidth[ColMemoryMapped]) << (entry.memoryMapped ? 'y' : 'n');
+  s << std::setw(colWidth[ColLastThread]) << entry.lastThread;
   char timeString[50];
   std::strftime(timeString, sizeof(timeString), "%X", &entry.lastAccess);
   s << std::setw(colWidth[ColLastAccess]) << conv.from_bytes(timeString);
@@ -241,13 +245,13 @@ void Output::printEntry(size_t index, const Entry &entry) {
 void Output::printColumnHeaders() {
   auto &s = stream();
   if (visibleColumnNumbers()) {
-    std::wstring ss =
-        L"[S]:" + std::to_wstring(static_cast<unsigned>(sorting.load()) + 1) +
-        L"," + (reverseSorting ? L"-" : L"+");
+    std::wstring ss = L"[S]:" +
+                      std::to_wstring(static_cast<unsigned>(sorting.load())) +
+                      L"," + (reverseSorting ? L"-" : L"+");
     s << ss;
-    s << std::setw(idxWidth + colWidth[ColPath] - ss.size()) << "[1]";
+    s << std::setw(idxWidth + colWidth[ColPath] - ss.size()) << "[0]";
     for (size_t i = ColPath + 1; i < ColumnsCount; ++i)
-      s << std::setw(colWidth[i]) << (L"[" + std::to_wstring(i + 1) + L"]");
+      s << std::setw(colWidth[i]) << (L"[" + std::to_wstring(i) + L"]");
     s << std::endl;
   }
   s << std::setw(idxWidth + colWidth[ColPath]) << columnNames[ColPath];

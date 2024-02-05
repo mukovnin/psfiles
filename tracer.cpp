@@ -2,47 +2,63 @@
 #include "log.hpp"
 #include <algorithm>
 #include <asm/unistd.h>
+#include <charconv>
 #include <cstdint>
 #include <ctype.h>
 #include <errno.h>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <linux/limits.h>
 #include <stdlib.h>
 #include <string>
 #include <sys/mman.h>
-#include <sys/ptrace.h>
-#include <sys/user.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 sig_atomic_t Tracer::terminate{0};
 
-Tracer::Tracer(pid_t pid, EventCallback cb) : pid(pid), callback(cb) {
+Tracer::Tracer(pid_t pid, EventCallback cb) : mainPid(pid), callback(cb) {
   if (!setSignalHandler())
     return;
-  if (ptrace(PTRACE_ATTACH, pid, nullptr, nullptr) != 0) {
-    LOGPE("ptrace (ATTACH)");
+  cmdLine = getCmdLine();
+  auto threads = getProcThreads();
+  if (threads.empty())
     return;
+  for (auto p : threads) {
+    if (ptrace(PTRACE_ATTACH, p, nullptr, nullptr) == -1) {
+      LOGPE("ptrace (ATTACH)");
+      return;
+    }
+    if (waitpid(p, nullptr, 0) == -1) {
+      LOGPE("waitpid");
+      return;
+    }
+    if (ptrace(PTRACE_SETOPTIONS, p, nullptr, options) == -1) {
+      LOGPE("ptrace (SETOPTIONS)");
+      return;
+    }
+    if (ptrace(PTRACE_SYSCALL, p, 0, 0) == -1) {
+      LOGPE("ptrace (SYSCALL)");
+      return;
+    }
   }
   attached = true;
-  cmdLine = getCmdLine();
-  if (setPtraceOptions())
-    LOGI("Attached to process with PID #.", pid);
+  LOGI("Attached to process with PID # [# thread(s)].", mainPid,
+       threads.size());
 }
 
 Tracer::Tracer(char *const *argv, EventCallback cb) : callback(cb) {
   if (!setSignalHandler())
     return;
-  pid = fork();
-  if (pid < 0) {
+  mainPid = fork();
+  if (mainPid < 0) {
     LOGPE("fork");
-  } else if (pid == 0) {
+  } else if (mainPid == 0) {
     spawnTracee(argv);
   } else {
-    spawned = true;
     int status{0};
-    if (waitpid(pid, &status, 0) < 0) {
+    if (waitpid(mainPid, &status, 0) == -1) {
       LOGPE("waitpid");
       return;
     }
@@ -51,44 +67,43 @@ Tracer::Tracer(char *const *argv, EventCallback cb) : callback(cb) {
       return;
     }
     cmdLine = getCmdLine();
-    if (setPtraceOptions())
-      LOGI("Forked (PID #).", pid);
+    if (ptrace(PTRACE_SETOPTIONS, mainPid, nullptr, options) != 0) {
+      LOGPE("ptrace (SETOPTIONS)");
+      return;
+    }
+    if (ptrace(PTRACE_SYSCALL, mainPid, 0, 0) < 0) {
+      LOGPE("ptrace (SYSCALL)");
+      return;
+    }
+    spawned = true;
+    LOGI("Forked (PID #).", mainPid);
   }
 }
 
 Tracer::~Tracer() {
   if (spawned) {
-    kill(pid, SIGTERM);
-    LOGI("Sent SIGTERM to tracee (PID #).", pid);
-  } else if (attached) {
-    kill(pid, SIGSTOP);
-    waitpid(pid, nullptr, 0);
-    if (ptrace(PTRACE_DETACH, pid, nullptr, nullptr) == 0)
-      LOGI("Detached from process with PID #.", pid);
-    else
-      LOGPE("ptrace (DETACH)");
-    kill(pid, SIGCONT);
+    kill(mainPid, SIGTERM);
+    LOGI("Sent SIGTERM to tracee (PID #).", mainPid);
   }
 }
 
-bool Tracer::setPtraceOptions() {
-  if (attached) {
-    kill(pid, SIGSTOP);
-    waitpid(pid, nullptr, 0);
+std::set<pid_t> Tracer::getProcThreads() {
+  std::set<pid_t> ret;
+  std::string s = "/proc/" + std::to_string(mainPid) + "/task";
+  for (const auto &dir_entry : std::filesystem::directory_iterator{s}) {
+    if (auto s = dir_entry.path().filename().string(); !s.empty()) {
+      pid_t p;
+      auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), p);
+      if (ec == std::errc() && ptr == s.data() + s.size())
+        ret.insert(p);
+    }
   }
-  if (ptrace(PTRACE_SETOPTIONS, pid, nullptr, PTRACE_O_TRACESYSGOOD) < 0) {
-    LOGPE("ptrace (SETOPTIONS)");
-    return false;
-  }
-  if (attached) {
-    kill(pid, SIGCONT);
-  }
-  return true;
+  return ret;
 }
 
 std::wstring Tracer::filePath(int fd) {
   const wchar_t *invalid = L"*INVALID FD*";
-  if (pid <= 0)
+  if (mainPid <= 0)
     return {};
   if (fd < 0)
     return invalid;
@@ -96,7 +111,7 @@ std::wstring Tracer::filePath(int fd) {
   if (fd <= 2)
     return std[fd];
   std::string linkPath =
-      "/proc/" + std::to_string(pid) + "/fd/" + std::to_string(fd);
+      "/proc/" + std::to_string(mainPid) + "/fd/" + std::to_string(fd);
   std::string out(PATH_MAX, 0);
   if (readlink(linkPath.data(), out.data(), out.size()) == -1) {
     LOGPE("readlink");
@@ -108,7 +123,7 @@ std::wstring Tracer::filePath(int fd) {
 }
 
 std::wstring Tracer::getCmdLine() {
-  std::string path = "/proc/" + std::to_string(pid) + "/cmdline";
+  std::string path = "/proc/" + std::to_string(mainPid) + "/cmdline";
   std::ifstream file(path);
   if (!file)
     return {};
@@ -150,53 +165,92 @@ bool Tracer::spawnTracee(char *const *argv) {
 }
 
 bool Tracer::iteration() {
-  if (!waitForSyscall())
-    return false;
-  struct user_regs_struct regs;
-  if (ptrace(PTRACE_GETREGS, pid, 0, &regs) < 0) {
+  pid_t tid;
+  do {
+    int status;
+    tid = waitpid(-1, &status, __WALL);
+    if (tid == -1) {
+      switch (errno) {
+      case EINTR: {
+        if (terminate)
+          LOGI("Termination requested.");
+        else
+          tid = 0;
+        break;
+      }
+      case ECHILD: {
+        LOGW("Tracee exited.");
+        spawned = attached = false;
+        break;
+      }
+      default: {
+        LOGPE("waitpid");
+        break;
+      }
+      }
+    }
+    if (tid > 0) {
+      if (WIFSTOPPED(status)) {
+        int sig = WSTOPSIG(status);
+        bool sysTrap = sig == (SIGTRAP | 0x80);
+        if (sysTrap && !handleSyscall(tid))
+          return false;
+        if (ptrace(PTRACE_SYSCALL, tid, 0, (sig & SIGTRAP) ? 0 : sig) == -1) {
+          LOGPE("ptrace (SYSCALL)");
+          return false;
+        }
+        if (!sysTrap)
+          tid = 0;
+      } else {
+        tid = 0;
+      }
+    }
+  } while (tid == 0);
+  return tid > 0;
+}
+
+bool Tracer::handleSyscall(pid_t tid) {
+  auto &ws = withinSyscall[tid];
+  ws = !ws;
+  user_regs_struct regs;
+  if (ptrace(PTRACE_GETREGS, tid, 0, &regs) == -1) {
     LOGPE("ptrace (GETREGS)");
     return false;
   }
-
-  // Syscall enter:
-  //  orig_rax - syscall number
-  //       rdi - fd (read, write, close)
-  // Syscall exit:
-  //  orig_rax - syscall number
-  //       rdi - fd (read, write, close)
-  //       rax - read/write count (read, write)
   int64_t sc = regs.orig_rax, rax = regs.rax, rdi = regs.rdi;
-
-  if (!withinSyscall) {
+  if (ws) {
     if (sc == __NR_close)
-      closingFile = filePath(rdi);
+      closingFiles[tid] = filePath(rdi);
   } else if (rax >= 0) {
     switch (sc) {
     case __NR_read:
     case __NR_readv: {
-      callback(EventInfo{Event::Read, filePath(rdi), (size_t)rax});
+      callback(EventInfo{tid, Event::Read, filePath(rdi), (size_t)rax});
       break;
     }
     case __NR_write:
     case __NR_writev: {
-      callback(EventInfo{Event::Write, filePath(rdi), (size_t)rax});
+      callback(EventInfo{tid, Event::Write, filePath(rdi), (size_t)rax});
       break;
     }
     case __NR_creat:
     case __NR_open:
     case __NR_openat: {
-      callback(EventInfo{Event::Open, filePath(rax)});
+      callback(EventInfo{tid, Event::Open, filePath(rax)});
       break;
     }
     case __NR_close: {
-      callback(EventInfo{Event::Close, closingFile});
+      if (auto it = closingFiles.find(tid); it != closingFiles.end()) {
+        callback(EventInfo{tid, Event::Close, it->second});
+        closingFiles.erase(it);
+      }
       break;
     }
     case __NR_mmap: {
       int fd = regs.r8;
       int flags = regs.r10;
       if (!(flags & MAP_ANONYMOUS))
-        callback(EventInfo{Event::MMap, filePath(fd)});
+        callback(EventInfo{tid, Event::MMap, filePath(fd)});
       break;
     }
     default: {
@@ -204,44 +258,7 @@ bool Tracer::iteration() {
     }
     }
   }
-  withinSyscall = !withinSyscall;
   return true;
-}
-
-bool Tracer::waitForSyscall() {
-  int sig = 0;
-  while (1) {
-    if (ptrace(PTRACE_SYSCALL, pid, 0, sig) < 0) {
-      LOGPE("ptrace (SYSCALL)");
-      return false;
-    }
-    int status;
-  again:
-    if (pid_t res = waitpid(pid, &status, 0); res == (pid_t)-1) {
-      if (errno == EINTR) {
-        if (terminate) {
-          LOGI("Termination requested.");
-          return false;
-        }
-        goto again;
-      }
-      LOGPE("waitpid");
-      return false;
-    }
-    // (WSTOPSIG(status) & 0x80) != 0 in syscall traps
-    // if PTRACE_O_TRACESYSGOOD option used
-    if (WIFSTOPPED(status) && (WSTOPSIG(status) & 0x80))
-      return true;
-    if (WIFEXITED(status)) {
-      LOGE("Tracee exited.");
-      return false;
-    }
-    sig = 0;
-    if (WIFSTOPPED(status)) {
-      if (auto ss = WSTOPSIG(status); ss != SIGTRAP)
-        sig = ss;
-    }
-  }
 }
 
 bool Tracer::loop() {
@@ -252,6 +269,6 @@ bool Tracer::loop() {
   return terminate;
 }
 
-pid_t Tracer::traceePid() const { return pid; }
+pid_t Tracer::traceePid() const { return mainPid; }
 
 std::wstring Tracer::traceeCmdLine() const { return cmdLine; }

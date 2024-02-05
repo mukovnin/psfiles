@@ -11,6 +11,7 @@
 #include <locale>
 #include <mutex>
 #include <string>
+#include <sys/types.h>
 #include <thread>
 #include <vector>
 
@@ -45,12 +46,13 @@ private:
     size_t openCount{0};
     size_t closeCount{0};
     bool memoryMapped{false};
+    pid_t lastThread{0};
     std::tm lastAccess{};
   };
   static constexpr size_t idxWidth{4};
   static constexpr size_t fixedHeaderHeight{3};
   static constexpr size_t minPathColWidth{10};
-  size_t colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 3, 12};
+  size_t colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 3, 11, 12};
   std::atomic<Column> sorting{ColPath};
   std::atomic_bool reverseSorting{false};
   pid_t pid{0};

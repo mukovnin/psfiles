@@ -3,25 +3,30 @@
 #include "event.hpp"
 #include <codecvt>
 #include <locale>
+#include <map>
+#include <set>
 #include <signal.h>
 #include <string>
+#include <sys/ptrace.h>
 #include <sys/types.h>
+#include <sys/user.h>
 
 class Tracer {
 private:
-  pid_t pid{0};
+  static constexpr int options{PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACECLONE};
+  pid_t mainPid{0};
   std::wstring cmdLine;
   std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
-  bool withinSyscall{false};
+  std::map<pid_t, bool> withinSyscall;
   bool spawned{false}, attached{false};
-  std::wstring closingFile;
+  std::map<pid_t, std::wstring> closingFiles;
   static sig_atomic_t terminate;
   EventCallback callback;
   bool iteration();
-  bool waitForSyscall();
+  bool handleSyscall(pid_t tid);
   bool spawnTracee(char *const *argv);
-  bool setPtraceOptions();
   bool setSignalHandler();
+  std::set<pid_t> getProcThreads();
   std::wstring filePath(int fd);
   std::wstring getCmdLine();
   static void signalHandler(int);
