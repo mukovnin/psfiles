@@ -14,6 +14,7 @@
 class Tracer {
 private:
   static constexpr int options{PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACECLONE};
+  static constexpr const wchar_t *invalidFd{L"*INVALID FD*"};
   pid_t mainPid{0};
   std::wstring cmdLine;
   std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
@@ -28,7 +29,10 @@ private:
   bool setSignalHandler();
   std::set<pid_t> getProcThreads();
   std::wstring filePath(int fd);
+  std::wstring filePath(int dirFd, const std::wstring &relPath);
   std::wstring getCmdLine();
+  std::wstring readLink(const std::string &path);
+  std::wstring readString(pid_t tid, void *addr);
   static void signalHandler(int);
 
 public:

@@ -38,6 +38,11 @@ protected:
 
 private:
   struct Entry {
+    enum {
+      EventMapped = (1 << 0),
+      EventUnlinked = (1 << 1),
+      EventRenamed = (1 << 2)
+    };
     std::wstring path;
     size_t writeSize{0};
     size_t readSize{0};
@@ -45,14 +50,14 @@ private:
     size_t readCount{0};
     size_t openCount{0};
     size_t closeCount{0};
-    bool memoryMapped{false};
+    uint8_t specialEvents{0};
     pid_t lastThread{0};
     std::tm lastAccess{};
   };
   static constexpr size_t idxWidth{4};
   static constexpr size_t fixedHeaderHeight{3};
   static constexpr size_t minPathColWidth{10};
-  size_t colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 3, 11, 12};
+  size_t colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 5, 11, 12};
   std::atomic<Column> sorting{ColPath};
   std::atomic_bool reverseSorting{false};
   pid_t pid{0};
@@ -67,10 +72,12 @@ private:
   void printEntry(size_t index, const Entry &entry);
   void printProcessInfo();
   void printColumnHeaders();
+  Entry &getEntry(const std::wstring &path);
   std::tm now() const;
   std::wstring truncString(const std::wstring &str, size_t maxSize,
                            bool left) const;
   std::wstring formatSize(size_t size) const;
+  std::wstring formatEvents(uint8_t state) const;
 };
 
 class FileOutput : public Output {

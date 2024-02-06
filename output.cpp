@@ -1,4 +1,5 @@
 #include "output.hpp"
+#include "column.hpp"
 #include "log.hpp"
 #include <algorithm>
 #include <chrono>
@@ -131,33 +132,51 @@ void Output::handleEvent(const EventInfo &info) {
   if (auto c = info.path.front(); c != '/' && c != '*')
     return;
   std::lock_guard lck(mtx);
-  auto it = std::find_if(list.begin(), list.end(),
-                         [&](auto &&item) { return item.path == info.path; });
-  bool found = it != list.end();
-  if (!found)
-    list.emplace_back(Entry{info.path});
-  auto &item = found ? *it : list.back();
-  switch (info.type) {
-  case Event::Open:
-    ++item.openCount;
-    break;
-  case Event::Close:
-    ++item.closeCount;
-    break;
-  case Event::Read:
-    ++item.readCount;
-    item.readSize += info.arg;
-    break;
-  case Event::Write:
-    ++item.writeCount;
-    item.writeSize += info.arg;
-    break;
-  case Event::MMap:
-    item.memoryMapped = true;
-    break;
-  }
+  auto &item = getEntry(info.path);
   item.lastThread = info.pid;
   item.lastAccess = now();
+  switch (info.type) {
+  case Event::Open: {
+    ++item.openCount;
+    break;
+  }
+  case Event::Close: {
+    ++item.closeCount;
+    break;
+  }
+  case Event::Read: {
+    ++item.readCount;
+    item.readSize += info.sizeArg;
+    break;
+  }
+  case Event::Write: {
+    ++item.writeCount;
+    item.writeSize += info.sizeArg;
+    break;
+  }
+  case Event::Map: {
+    item.specialEvents |= Entry::EventMapped;
+    break;
+  }
+  case Event::Rename: {
+    item.specialEvents |= Entry::EventRenamed;
+    auto src = item;
+    auto &dst = getEntry(info.strArg);
+    dst.openCount += src.openCount;
+    dst.closeCount += src.closeCount;
+    dst.readCount += src.readCount;
+    dst.writeCount += src.writeCount;
+    dst.readSize += src.readSize;
+    dst.writeSize += src.writeSize;
+    dst.lastThread = src.lastThread;
+    dst.lastAccess = src.lastAccess;
+    break;
+  }
+  case Event::Unlink: {
+    item.specialEvents |= Entry::EventUnlinked;
+    break;
+  }
+  }
 }
 
 void Output::update() {
@@ -208,8 +227,8 @@ void Output::sort() {
       return f.openCount < s.openCount;
     case ColCloseCount:
       return f.closeCount < s.closeCount;
-    case ColMemoryMapped:
-      return f.memoryMapped < s.memoryMapped;
+    case ColSpecialEvents:
+      return f.specialEvents < s.specialEvents;
     case ColLastThread:
       return f.lastThread < s.lastThread;
     case ColLastAccess: {
@@ -234,7 +253,8 @@ void Output::printEntry(size_t index, const Entry &entry) {
   s << std::setw(colWidth[ColReadCount]) << entry.readCount;
   s << std::setw(colWidth[ColOpenCount]) << entry.openCount;
   s << std::setw(colWidth[ColCloseCount]) << entry.closeCount;
-  s << std::setw(colWidth[ColMemoryMapped]) << (entry.memoryMapped ? 'y' : 'n');
+  s << std::setw(colWidth[ColSpecialEvents])
+    << formatEvents(entry.specialEvents);
   s << std::setw(colWidth[ColLastThread]) << entry.lastThread;
   char timeString[50];
   std::strftime(timeString, sizeof(timeString), "%X", &entry.lastAccess);
@@ -275,6 +295,15 @@ std::tm Output::now() const {
   return *std::localtime(&time);
 }
 
+Output::Entry &Output::getEntry(const std::wstring &path) {
+  auto it = std::find_if(list.begin(), list.end(),
+                         [&](auto &&item) { return item.path == path; });
+  bool found = it != list.end();
+  if (!found)
+    list.emplace_back(Entry{path});
+  return found ? *it : list.back();
+}
+
 std::wstring Output::truncString(const std::wstring &str, size_t maxSize,
                                  bool left) const {
   const std::wstring fill{L"..."};
@@ -299,6 +328,19 @@ std::wstring Output::formatSize(size_t size) const {
     ++i;
   }
   return std::to_wstring(size) + suffixes[i];
+}
+
+std::wstring Output::formatEvents(uint8_t events) const {
+  std::wstring s;
+  if (events & Entry::EventMapped)
+    s += 'm';
+  if (events & Entry::EventRenamed)
+    s += 'r';
+  if (events & Entry::EventUnlinked)
+    s += 'u';
+  if (s.empty())
+    s = '-';
+  return s;
 }
 
 size_t Output::headerHeight() const {

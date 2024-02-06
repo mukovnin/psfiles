@@ -3,15 +3,17 @@
 #include <algorithm>
 #include <asm/unistd.h>
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <linux/limits.h>
 #include <stdlib.h>
-#include <string>
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -101,25 +103,45 @@ std::set<pid_t> Tracer::getProcThreads() {
   return ret;
 }
 
+std::wstring Tracer::readLink(const std::string &path) {
+  std::string out(PATH_MAX, 0);
+  if (readlink(path.data(), out.data(), out.size()) == -1) {
+    LOGPE("readlink");
+    return invalidFd;
+  }
+  if (size_t len = out.find('\0'); len != std::string::npos)
+    out.resize(len);
+  return conv.from_bytes(out);
+}
+
 std::wstring Tracer::filePath(int fd) {
-  const wchar_t *invalid = L"*INVALID FD*";
   if (mainPid <= 0)
     return {};
   if (fd < 0)
-    return invalid;
+    return invalidFd;
   const wchar_t *std[] = {L"*STDIN*", L"*STDOUT*", L"*STDERR*"};
   if (fd <= 2)
     return std[fd];
   std::string linkPath =
       "/proc/" + std::to_string(mainPid) + "/fd/" + std::to_string(fd);
-  std::string out(PATH_MAX, 0);
-  if (readlink(linkPath.data(), out.data(), out.size()) == -1) {
-    LOGPE("readlink");
-    return invalid;
+  return readLink(linkPath);
+}
+
+std::wstring Tracer::filePath(int dirFd, const std::wstring &relPath) {
+  if (relPath.empty() || relPath.front() == '/')
+    return relPath;
+  std::wstring dir;
+  if (dirFd == AT_FDCWD) {
+    std::string linkPath = "/proc/" + std::to_string(mainPid) + "/cwd";
+    dir = readLink(linkPath);
+  } else {
+    dir = filePath(dirFd);
   }
-  if (size_t len = out.find('\0'); len != std::string::npos)
-    out.resize(len);
-  return conv.from_bytes(out);
+  if (dir.empty())
+    return relPath;
+  if (dir.back() == '/')
+    dir.pop_back();
+  return dir + L'/' + relPath;
 }
 
 std::wstring Tracer::getCmdLine() {
@@ -132,6 +154,28 @@ std::wstring Tracer::getCmdLine() {
   std::transform(beg, end, std::back_inserter(str),
                  [](char c) { return c ? c : ' '; });
   return conv.from_bytes(str);
+}
+
+std::wstring Tracer::readString(pid_t tid, void *addr) {
+  constexpr size_t wsize{sizeof(int64_t)};
+  constexpr size_t nwords{PATH_MAX / wsize};
+  union {
+    int64_t words[nwords];
+    char chars[PATH_MAX]{};
+  } __attribute__((__packed__)) data;
+  int64_t *p = (int64_t *)addr;
+  for (size_t i = 0; i < nwords; ++i, ++p) {
+    errno = 0;
+    data.words[i] = ptrace(PTRACE_PEEKDATA, tid, p, nullptr);
+    if (errno) {
+      LOGPE("ptrace (PEEKDATA)");
+      return {};
+    }
+    if (memchr(&data.words[i], '\0', wsize))
+      break;
+  }
+  data.chars[sizeof(data.chars) - 1] = '\0';
+  return conv.from_bytes(data.chars);
 }
 
 void Tracer::signalHandler(int) { terminate = 1; }
@@ -217,26 +261,32 @@ bool Tracer::handleSyscall(pid_t tid) {
     LOGPE("ptrace (GETREGS)");
     return false;
   }
-  int64_t sc = regs.orig_rax, rax = regs.rax, rdi = regs.rdi;
+  // syscall number: %orig_rax
+  // args: %rdi, %rsi, %rdx, %r10, %r8, %r9
+  // result: %rax
+  int64_t sc = regs.orig_rax;
   if (ws) {
     if (sc == __NR_close)
-      closingFiles[tid] = filePath(rdi);
-  } else if (rax >= 0) {
+      closingFiles[tid] = filePath(regs.rdi);
+  } else if ((int64_t)regs.rax >= 0) {
     switch (sc) {
     case __NR_read:
     case __NR_readv: {
-      callback(EventInfo{tid, Event::Read, filePath(rdi), (size_t)rax});
+      callback(
+          EventInfo{tid, Event::Read, filePath(regs.rdi), (size_t)regs.rax});
       break;
     }
     case __NR_write:
     case __NR_writev: {
-      callback(EventInfo{tid, Event::Write, filePath(rdi), (size_t)rax});
+      callback(
+          EventInfo{tid, Event::Write, filePath(regs.rdi), (size_t)regs.rax});
       break;
     }
     case __NR_creat:
     case __NR_open:
-    case __NR_openat: {
-      callback(EventInfo{tid, Event::Open, filePath(rax)});
+    case __NR_openat:
+    case __NR_openat2: {
+      callback(EventInfo{tid, Event::Open, filePath(regs.rax)});
       break;
     }
     case __NR_close: {
@@ -249,8 +299,38 @@ bool Tracer::handleSyscall(pid_t tid) {
     case __NR_mmap: {
       int fd = regs.r8;
       int flags = regs.r10;
-      if (!(flags & MAP_ANONYMOUS))
-        callback(EventInfo{tid, Event::MMap, filePath(fd)});
+      if (!(flags & MAP_ANONYMOUS)) {
+        callback(EventInfo{tid, Event::Map, filePath(fd)});
+      }
+      break;
+    }
+    case __NR_rename:
+    case __NR_renameat:
+    case __NR_renameat2: {
+      std::wstring from, to;
+      if (sc == __NR_rename) {
+        from = readString(tid, (void *)regs.rdi);
+        to = readString(tid, (void *)regs.rsi);
+      } else {
+        from = filePath(regs.rdi, readString(tid, (void *)regs.rsi)),
+        to = filePath(regs.rdx, readString(tid, (void *)regs.r10));
+      }
+      callback(EventInfo{tid, Event::Rename, from, 0, to});
+      break;
+    }
+    case __NR_unlink:
+    case __NR_unlinkat: {
+      int dir;
+      void *data;
+      if (sc == __NR_unlink) {
+        dir = AT_FDCWD;
+        data = (void *)regs.rdi;
+      } else {
+        dir = regs.rdi;
+        data = (void *)regs.rsi;
+      }
+      std::wstring path = filePath(dir, readString(tid, data));
+      callback(EventInfo{tid, Event::Unlink, path});
       break;
     }
     default: {
