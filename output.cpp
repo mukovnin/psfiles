@@ -96,6 +96,7 @@ void Output::start() {
 }
 
 void Output::stop() {
+  update();
   if (thread.joinable()) {
     int64_t val{1};
     ssize_t ret = write(eventFd, &val, sizeof(val));
