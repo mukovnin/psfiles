@@ -239,7 +239,8 @@ bool Tracer::iteration() {
         bool sysTrap = sig == (SIGTRAP | 0x80);
         if (sysTrap && !handleSyscall(tid))
           return false;
-        if (ptrace(PTRACE_SYSCALL, tid, 0, (sig & SIGTRAP) ? 0 : sig) == -1) {
+        int corrSig = (sig == SIGTRAP || sig == (SIGTRAP | 0x80)) ? 0 : sig;
+        if (ptrace(PTRACE_SYSCALL, tid, 0, corrSig) == -1) {
           LOGPE("ptrace (SYSCALL)");
           return false;
         }
