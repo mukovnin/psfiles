@@ -308,28 +308,35 @@ bool Tracer::handleSyscall(pid_t tid) {
     case __NR_renameat:
     case __NR_renameat2: {
       std::wstring from, to;
+      int dirFrom, dirTo;
+      void *pFrom, *pTo;
       if (sc == __NR_rename) {
-        from = readString(tid, (void *)regs.rdi);
-        to = readString(tid, (void *)regs.rsi);
+        dirFrom = dirTo = AT_FDCWD;
+        pFrom = (void *)regs.rdi;
+        pTo = (void *)regs.rsi;
       } else {
-        from = filePath(regs.rdi, readString(tid, (void *)regs.rsi)),
-        to = filePath(regs.rdx, readString(tid, (void *)regs.r10));
+        dirFrom = regs.rdi;
+        dirTo = regs.rdx;
+        pFrom = (void *)regs.rsi;
+        pTo = (void *)regs.r10;
       }
+      from = filePath(dirFrom, readString(tid, pFrom));
+      to = filePath(dirTo, readString(tid, pTo));
       callback(EventInfo{tid, Event::Rename, from, 0, to});
       break;
     }
     case __NR_unlink:
     case __NR_unlinkat: {
       int dir;
-      void *data;
+      void *pPath;
       if (sc == __NR_unlink) {
         dir = AT_FDCWD;
-        data = (void *)regs.rdi;
+        pPath = (void *)regs.rdi;
       } else {
         dir = regs.rdi;
-        data = (void *)regs.rsi;
+        pPath = (void *)regs.rsi;
       }
-      std::wstring path = filePath(dir, readString(tid, data));
+      std::wstring path = filePath(dir, readString(tid, pPath));
       callback(EventInfo{tid, Event::Unlink, path});
       break;
     }
