@@ -58,7 +58,7 @@ bool ArgsParser::parse(int argc, char **argv) {
       const char *first = optarg, *last = optarg + strlen(optarg);
       auto [ptr, ec] = std::from_chars(first, last, mDelay);
       if (!(ec == std::errc() && ptr == last && mDelay)) {
-        LOGE("Invalid --delay option: must be a non-negative integer.");
+        LOGE("Invalid --delay option: must be a positive integer.");
         return false;
       }
       break;
@@ -113,7 +113,7 @@ void ArgsParser::printUsage() const {
     std::cout << std::left << std::setw(25) << left << arg.description
               << std::endl;
   };
-  std::cout << "Usage:\n" << exe << " [-os] -p | -c\n";
+  std::cout << "Usage:\n" << exe << " [-osd] -p | -c\n";
   std::for_each(argsList.cbegin(), argsList.cend(), print);
   std::cout << "Column names: ";
   std::copy(std::cbegin(columnNames), std::cend(columnNames),
