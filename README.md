@@ -63,3 +63,5 @@ If **--output** option was not specified, keyboard control is available:
 * <code>cd build</code>
 * <code>make</code>
 * if needed, run <code>make install</code>
+
+If you are an Arch Linux user, there is [AUR package](https://aur.archlinux.org/packages/psfiles).
