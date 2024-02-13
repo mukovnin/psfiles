@@ -3,13 +3,16 @@
 **psfiles** is a simple utility to view file system activity of Linux processes.
 Only regular *read(v)*, *write(v)*, *open(at)*, *close*, *rename*, *unlink* syscalls are traced.
 If the file has been memory mapped, this utility will NOT show the number of bytes read or written.
-Only x86-64 supported currently.
 
 # Features
 
 * start new process or attach to existing one and trace its file system activity
 * output results to standard output or save results to file
 * custom results sorting
+
+# System requirements
+
+Linux kernel >= 5.3
 
 # Options
 

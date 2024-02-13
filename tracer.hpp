@@ -2,6 +2,7 @@
 
 #include "event.hpp"
 #include <codecvt>
+#include <cstdint>
 #include <locale>
 #include <map>
 #include <set>
@@ -13,12 +14,16 @@
 
 class Tracer {
 private:
+  struct SyscallState {
+    uint64_t nr;
+    uint64_t args[6];
+  };
   static constexpr int options{PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACECLONE};
   static constexpr const wchar_t *invalidFd{L"*INVALID FD*"};
   pid_t mainPid{0};
   std::wstring cmdLine;
   std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
-  std::map<pid_t, bool> withinSyscall;
+  std::map<pid_t, SyscallState> state;
   bool spawned{false}, attached{false};
   std::map<pid_t, std::wstring> closingFiles;
   static sig_atomic_t terminate;

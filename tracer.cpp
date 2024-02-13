@@ -15,6 +15,7 @@
 #include <linux/limits.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <sys/ptrace.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -255,96 +256,103 @@ bool Tracer::iteration() {
 }
 
 bool Tracer::handleSyscall(pid_t tid) {
-  auto &ws = withinSyscall[tid];
-  ws = !ws;
-  user_regs_struct regs;
-  if (ptrace(PTRACE_GETREGS, tid, 0, &regs) == -1) {
-    LOGPE("ptrace (GETREGS)");
+  __ptrace_syscall_info si;
+  constexpr size_t sz{sizeof(__ptrace_syscall_info)};
+  if (ptrace(PTRACE_GET_SYSCALL_INFO, tid, sz, &si) == -1) {
+    LOGPE("ptrace (GET_SYSCALL_INFO)");
     return false;
   }
-  // syscall number: %orig_rax
-  // args: %rdi, %rsi, %rdx, %r10, %r8, %r9
-  // result: %rax
-  int64_t sc = regs.orig_rax;
-  if (ws) {
-    if (sc == __NR_close)
-      closingFiles[tid] = filePath(regs.rdi);
-  } else if ((int64_t)regs.rax >= 0) {
-    switch (sc) {
-    case __NR_read:
-    case __NR_readv: {
-      callback(
-          EventInfo{tid, Event::Read, filePath(regs.rdi), (size_t)regs.rax});
-      break;
+  if (si.op == PTRACE_SYSCALL_INFO_ENTRY) {
+    auto &st = state[tid];
+    st.nr = si.entry.nr;
+    std::copy(std::begin(si.entry.args), std::end(si.entry.args),
+              std::begin(st.args));
+    if (st.nr == __NR_close)
+      closingFiles[tid] = filePath(st.args[0]);
+  } else if (si.op == PTRACE_SYSCALL_INFO_EXIT) {
+    auto it = state.find(tid);
+    if (it == state.end()) {
+      LOGE("Unexpected syscall state.");
+      return false;
     }
-    case __NR_write:
-    case __NR_writev: {
-      callback(
-          EventInfo{tid, Event::Write, filePath(regs.rdi), (size_t)regs.rax});
-      break;
-    }
-    case __NR_creat:
-    case __NR_open:
-    case __NR_openat:
-    case __NR_openat2: {
-      callback(EventInfo{tid, Event::Open, filePath(regs.rax)});
-      break;
-    }
-    case __NR_close: {
-      if (auto it = closingFiles.find(tid); it != closingFiles.end()) {
-        callback(EventInfo{tid, Event::Close, it->second});
-        closingFiles.erase(it);
+    uint64_t nr = it->second.nr;
+    int64_t rval = si.exit.rval;
+    uint64_t *args = it->second.args;
+    if (rval >= 0) {
+      switch (nr) {
+      case __NR_read:
+      case __NR_readv: {
+        callback(EventInfo{tid, Event::Read, filePath(args[0]), (size_t)rval});
+        break;
       }
-      break;
-    }
-    case __NR_mmap: {
-      int fd = regs.r8;
-      int flags = regs.r10;
-      if (!(flags & MAP_ANONYMOUS)) {
-        callback(EventInfo{tid, Event::Map, filePath(fd)});
+      case __NR_write:
+      case __NR_writev: {
+        callback(EventInfo{tid, Event::Write, filePath(args[0]), (size_t)rval});
+        break;
       }
-      break;
-    }
-    case __NR_rename:
-    case __NR_renameat:
-    case __NR_renameat2: {
-      std::wstring from, to;
-      int dirFrom, dirTo;
-      void *pFrom, *pTo;
-      if (sc == __NR_rename) {
-        dirFrom = dirTo = AT_FDCWD;
-        pFrom = (void *)regs.rdi;
-        pTo = (void *)regs.rsi;
-      } else {
-        dirFrom = regs.rdi;
-        dirTo = regs.rdx;
-        pFrom = (void *)regs.rsi;
-        pTo = (void *)regs.r10;
+      case __NR_creat:
+      case __NR_open:
+      case __NR_openat:
+      case __NR_openat2: {
+        callback(EventInfo{tid, Event::Open, filePath(rval)});
+        break;
       }
-      from = filePath(dirFrom, readString(tid, pFrom));
-      to = filePath(dirTo, readString(tid, pTo));
-      callback(EventInfo{tid, Event::Rename, from, 0, to});
-      break;
-    }
-    case __NR_unlink:
-    case __NR_unlinkat: {
-      int dir;
-      void *pPath;
-      if (sc == __NR_unlink) {
-        dir = AT_FDCWD;
-        pPath = (void *)regs.rdi;
-      } else {
-        dir = regs.rdi;
-        pPath = (void *)regs.rsi;
+      case __NR_close: {
+        if (auto it = closingFiles.find(tid); it != closingFiles.end()) {
+          callback(EventInfo{tid, Event::Close, it->second});
+          closingFiles.erase(it);
+        }
+        break;
       }
-      std::wstring path = filePath(dir, readString(tid, pPath));
-      callback(EventInfo{tid, Event::Unlink, path});
-      break;
+      case __NR_mmap: {
+        int fd = args[4];
+        int flags = args[3];
+        if (!(flags & MAP_ANONYMOUS))
+          callback(EventInfo{tid, Event::Map, filePath(fd)});
+        break;
+      }
+      case __NR_rename:
+      case __NR_renameat:
+      case __NR_renameat2: {
+        std::wstring from, to;
+        int dirFrom, dirTo;
+        void *pFrom, *pTo;
+        if (nr == __NR_rename) {
+          dirFrom = dirTo = AT_FDCWD;
+          pFrom = (void *)args[0];
+          pTo = (void *)args[1];
+        } else {
+          dirFrom = args[0];
+          dirTo = args[2];
+          pFrom = (void *)args[1];
+          pTo = (void *)args[3];
+        }
+        from = filePath(dirFrom, readString(tid, pFrom));
+        to = filePath(dirTo, readString(tid, pTo));
+        callback(EventInfo{tid, Event::Rename, from, 0, to});
+        break;
+      }
+      case __NR_unlink:
+      case __NR_unlinkat: {
+        int dir;
+        void *pPath;
+        if (nr == __NR_unlink) {
+          dir = AT_FDCWD;
+          pPath = (void *)args[0];
+        } else {
+          dir = args[0];
+          pPath = (void *)args[1];
+        }
+        std::wstring path = filePath(dir, readString(tid, pPath));
+        callback(EventInfo{tid, Event::Unlink, path});
+        break;
+      }
+      default: {
+        break;
+      }
+      }
     }
-    default: {
-      break;
-    }
-    }
+    state.erase(it);
   }
   return true;
 }
