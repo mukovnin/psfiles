@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iterator>
 #include <linux/limits.h>
+#include <regex>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
@@ -116,8 +117,6 @@ std::string Tracer::readLink(const std::string &path) {
 }
 
 std::string Tracer::filePath(int fd) {
-  if (mainPid <= 0)
-    return {};
   if (fd < 0)
     return invalidFd;
   const char *std[] = {"*STDIN*", "*STDOUT*", "*STDERR*"};
@@ -140,9 +139,18 @@ std::string Tracer::filePath(int dirFd, const std::string &relPath) {
   }
   if (dir.empty())
     return relPath;
-  if (dir.back() == '/')
-    dir.pop_back();
   return dir + '/' + relPath;
+}
+
+std::string Tracer::fixRelativePath(const std::string &path) {
+  std::regex current(R"(/\./)");
+  std::regex parent(R"(/[^\./]+/\.\./)");
+  std::string s(path);
+  while (regex_search(s, current))
+    s = regex_replace(s, current, "/");
+  while (regex_search(s, parent))
+    s = regex_replace(s, parent, "/");
+  return s;
 }
 
 std::string Tracer::getCmdLine() {
@@ -279,27 +287,28 @@ bool Tracer::handleSyscall(pid_t tid) {
     int64_t rval = si.exit.rval;
     uint64_t *args = it->second.args;
     if (rval >= 0) {
+      EventInfo ei{};
       switch (nr) {
       case __NR_read:
       case __NR_readv: {
-        callback(EventInfo{tid, Event::Read, filePath(args[0]), (size_t)rval});
+        ei = {tid, Event::Read, filePath(args[0]), (size_t)rval};
         break;
       }
       case __NR_write:
       case __NR_writev: {
-        callback(EventInfo{tid, Event::Write, filePath(args[0]), (size_t)rval});
+        ei = {tid, Event::Write, filePath(args[0]), (size_t)rval};
         break;
       }
       case __NR_creat:
       case __NR_open:
       case __NR_openat:
       case __NR_openat2: {
-        callback(EventInfo{tid, Event::Open, filePath(rval)});
+        ei = {tid, Event::Open, filePath(rval)};
         break;
       }
       case __NR_close: {
         if (auto it = closingFiles.find(tid); it != closingFiles.end()) {
-          callback(EventInfo{tid, Event::Close, it->second});
+          ei = {tid, Event::Close, it->second};
           closingFiles.erase(it);
         }
         break;
@@ -308,7 +317,7 @@ bool Tracer::handleSyscall(pid_t tid) {
         int fd = args[4];
         int flags = args[3];
         if (!(flags & MAP_ANONYMOUS))
-          callback(EventInfo{tid, Event::Map, filePath(fd)});
+          ei = {tid, Event::Map, filePath(fd)};
         break;
       }
       case __NR_rename:
@@ -329,7 +338,7 @@ bool Tracer::handleSyscall(pid_t tid) {
         }
         from = filePath(dirFrom, readString(tid, pFrom));
         to = filePath(dirTo, readString(tid, pTo));
-        callback(EventInfo{tid, Event::Rename, from, 0, to});
+        ei = {tid, Event::Rename, from, 0, to};
         break;
       }
       case __NR_unlink:
@@ -344,12 +353,17 @@ bool Tracer::handleSyscall(pid_t tid) {
           pPath = (void *)args[1];
         }
         std::string path = filePath(dir, readString(tid, pPath));
-        callback(EventInfo{tid, Event::Unlink, path});
+        ei = {tid, Event::Unlink, path};
         break;
       }
       default: {
         break;
       }
+      }
+      if (ei.pid) {
+        ei.path = fixRelativePath(ei.path);
+        ei.strArg = fixRelativePath(ei.strArg);
+        callback(ei);
       }
     }
     state.erase(it);

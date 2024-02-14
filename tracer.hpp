@@ -32,6 +32,7 @@ private:
   std::set<pid_t> getProcThreads();
   std::string filePath(int fd);
   std::string filePath(int dirFd, const std::string &relPath);
+  std::string fixRelativePath(const std::string &path);
   std::string getCmdLine();
   std::string readLink(const std::string &path);
   std::string readString(pid_t tid, void *addr);
