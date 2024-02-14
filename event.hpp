@@ -10,9 +10,9 @@ enum class Event { Open, Close, Read, Write, Map, Rename, Unlink };
 struct EventInfo {
   pid_t pid;
   Event type;
-  std::wstring path;
+  std::string path;
   size_t sizeArg{0};
-  std::wstring strArg{};
+  std::string strArg{};
 };
 
 using EventCallback = std::function<void(const EventInfo &)>;

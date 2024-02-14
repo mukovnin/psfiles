@@ -1,9 +1,7 @@
 #pragma once
 
 #include "event.hpp"
-#include <codecvt>
 #include <cstdint>
-#include <locale>
 #include <map>
 #include <set>
 #include <signal.h>
@@ -19,13 +17,12 @@ private:
     uint64_t args[6];
   };
   static constexpr int options{PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACECLONE};
-  static constexpr const wchar_t *invalidFd{L"*INVALID FD*"};
+  static constexpr const char *invalidFd{"*INVALID FD*"};
   pid_t mainPid{0};
-  std::wstring cmdLine;
-  std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
+  std::string cmdLine;
   std::map<pid_t, SyscallState> state;
   bool spawned{false}, attached{false};
-  std::map<pid_t, std::wstring> closingFiles;
+  std::map<pid_t, std::string> closingFiles;
   static sig_atomic_t terminate;
   EventCallback callback;
   bool iteration();
@@ -33,11 +30,11 @@ private:
   bool spawnTracee(char *const *argv);
   bool setSignalHandler();
   std::set<pid_t> getProcThreads();
-  std::wstring filePath(int fd);
-  std::wstring filePath(int dirFd, const std::wstring &relPath);
-  std::wstring getCmdLine();
-  std::wstring readLink(const std::string &path);
-  std::wstring readString(pid_t tid, void *addr);
+  std::string filePath(int fd);
+  std::string filePath(int dirFd, const std::string &relPath);
+  std::string getCmdLine();
+  std::string readLink(const std::string &path);
+  std::string readString(pid_t tid, void *addr);
   static void signalHandler(int);
 
 public:
@@ -50,5 +47,5 @@ public:
   ~Tracer();
   bool loop();
   pid_t traceePid() const;
-  std::wstring traceeCmdLine() const;
+  std::string traceeCmdLine() const;
 };

@@ -104,7 +104,7 @@ std::set<pid_t> Tracer::getProcThreads() {
   return ret;
 }
 
-std::wstring Tracer::readLink(const std::string &path) {
+std::string Tracer::readLink(const std::string &path) {
   std::string out(PATH_MAX, 0);
   if (readlink(path.data(), out.data(), out.size()) == -1) {
     LOGPE("readlink");
@@ -112,15 +112,15 @@ std::wstring Tracer::readLink(const std::string &path) {
   }
   if (size_t len = out.find('\0'); len != std::string::npos)
     out.resize(len);
-  return conv.from_bytes(out);
+  return out;
 }
 
-std::wstring Tracer::filePath(int fd) {
+std::string Tracer::filePath(int fd) {
   if (mainPid <= 0)
     return {};
   if (fd < 0)
     return invalidFd;
-  const wchar_t *std[] = {L"*STDIN*", L"*STDOUT*", L"*STDERR*"};
+  const char *std[] = {"*STDIN*", "*STDOUT*", "*STDERR*"};
   if (fd <= 2)
     return std[fd];
   std::string linkPath =
@@ -128,10 +128,10 @@ std::wstring Tracer::filePath(int fd) {
   return readLink(linkPath);
 }
 
-std::wstring Tracer::filePath(int dirFd, const std::wstring &relPath) {
+std::string Tracer::filePath(int dirFd, const std::string &relPath) {
   if (relPath.empty() || relPath.front() == '/')
     return relPath;
-  std::wstring dir;
+  std::string dir;
   if (dirFd == AT_FDCWD) {
     std::string linkPath = "/proc/" + std::to_string(mainPid) + "/cwd";
     dir = readLink(linkPath);
@@ -142,10 +142,10 @@ std::wstring Tracer::filePath(int dirFd, const std::wstring &relPath) {
     return relPath;
   if (dir.back() == '/')
     dir.pop_back();
-  return dir + L'/' + relPath;
+  return dir + '/' + relPath;
 }
 
-std::wstring Tracer::getCmdLine() {
+std::string Tracer::getCmdLine() {
   std::string path = "/proc/" + std::to_string(mainPid) + "/cmdline";
   std::ifstream file(path);
   if (!file)
@@ -154,10 +154,10 @@ std::wstring Tracer::getCmdLine() {
   std::string str;
   std::transform(beg, end, std::back_inserter(str),
                  [](char c) { return c ? c : ' '; });
-  return conv.from_bytes(str);
+  return str;
 }
 
-std::wstring Tracer::readString(pid_t tid, void *addr) {
+std::string Tracer::readString(pid_t tid, void *addr) {
   constexpr size_t wsize{sizeof(int64_t)};
   constexpr size_t nwords{PATH_MAX / wsize};
   union {
@@ -176,7 +176,7 @@ std::wstring Tracer::readString(pid_t tid, void *addr) {
       break;
   }
   data.chars[sizeof(data.chars) - 1] = '\0';
-  return conv.from_bytes(data.chars);
+  return data.chars;
 }
 
 void Tracer::signalHandler(int) { terminate = 1; }
@@ -314,7 +314,7 @@ bool Tracer::handleSyscall(pid_t tid) {
       case __NR_rename:
       case __NR_renameat:
       case __NR_renameat2: {
-        std::wstring from, to;
+        std::string from, to;
         int dirFrom, dirTo;
         void *pFrom, *pTo;
         if (nr == __NR_rename) {
@@ -343,7 +343,7 @@ bool Tracer::handleSyscall(pid_t tid) {
           dir = args[0];
           pPath = (void *)args[1];
         }
-        std::wstring path = filePath(dir, readString(tid, pPath));
+        std::string path = filePath(dir, readString(tid, pPath));
         callback(EventInfo{tid, Event::Unlink, path});
         break;
       }
@@ -367,4 +367,4 @@ bool Tracer::loop() {
 
 pid_t Tracer::traceePid() const { return mainPid; }
 
-std::wstring Tracer::traceeCmdLine() const { return cmdLine; }
+std::string Tracer::traceeCmdLine() const { return cmdLine; }

@@ -16,6 +16,6 @@ enum Column {
   ColumnsCount
 };
 
-static const std::wstring columnNames[]{
-    L"path",   L"wsize",  L"rsize", L"wcount",  L"rcount",
-    L"ocount", L"ccount", L"spec",  L"lthread", L"laccess"};
+static constexpr const char *columnNames[]{
+    "path",   "wsize",  "rsize", "wcount",  "rcount",
+    "ocount", "ccount", "spec",  "lthread", "laccess"};

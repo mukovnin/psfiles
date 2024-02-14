@@ -121,10 +121,10 @@ void Output::toggleSortingOrder() {
   update();
 }
 
-void Output::setProcessInfo(pid_t pid, const std::wstring &cmd) {
+void Output::setProcessInfo(pid_t pid, const std::string &cmd) {
   std::lock_guard lck(mtx);
   this->pid = pid;
-  this->cmd = cmd;
+  this->cmd = conv.from_bytes(cmd);
 }
 
 void Output::handleEvent(const EventInfo &info) {
@@ -133,7 +133,7 @@ void Output::handleEvent(const EventInfo &info) {
   if (auto c = info.path.front(); c != '/' && c != '*')
     return;
   std::lock_guard lck(mtx);
-  auto &item = getEntry(info.path);
+  auto &item = getEntry(conv.from_bytes(info.path));
   item.lastThread = info.pid;
   item.lastAccess = now();
   switch (info.type) {
@@ -162,7 +162,7 @@ void Output::handleEvent(const EventInfo &info) {
   case Event::Rename: {
     item.specialEvents |= Entry::EventRenamed;
     auto src = item;
-    auto &dst = getEntry(info.strArg);
+    auto &dst = getEntry(conv.from_bytes(info.strArg));
     dst.openCount += src.openCount;
     dst.closeCount += src.closeCount;
     dst.readCount += src.readCount;
@@ -285,8 +285,8 @@ void Output::printProcessInfo() {
   constexpr size_t left{20};
   if (maxWidth() <= left)
     return;
-  stream() << std::setw(left) << L"PID: " << pid << std::endl
-           << std::setw(left) << L"Command line: "
+  stream() << std::setw(left) << "PID: " << pid << std::endl
+           << std::setw(left) << "Command line: "
            << truncString(cmd, maxWidth() - left, false) << std::endl;
 }
 

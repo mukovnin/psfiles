@@ -3,7 +3,6 @@
 #include "log.hpp"
 #include <algorithm>
 #include <charconv>
-#include <codecvt>
 #include <cstddef>
 #include <cstring>
 #include <getopt.h>
@@ -39,8 +38,7 @@ bool ArgsParser::parse(int argc, char **argv) {
       break;
     }
     case 's': {
-      std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
-      if (std::wstring s = conv.from_bytes(optarg); !s.empty()) {
+      if (std::string s = optarg; !s.empty()) {
         if (s.back() == '-') {
           s.pop_back();
           mReverseSorting = true;
@@ -117,6 +115,6 @@ void ArgsParser::printUsage() const {
   std::for_each(argsList.cbegin(), argsList.cend(), print);
   std::cout << "Column names: ";
   std::copy(std::cbegin(columnNames), std::cend(columnNames),
-            std::ostream_iterator<std::wstring, wchar_t>(std::wcout, L" "));
+            std::ostream_iterator<const char *>(std::cout, " "));
   std::cout << std::endl;
 }

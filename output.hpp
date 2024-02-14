@@ -21,7 +21,7 @@ public:
   virtual ~Output();
   void setSorting(Column column);
   void toggleSortingOrder();
-  void setProcessInfo(pid_t pid, const std::wstring &cmd);
+  void setProcessInfo(pid_t pid, const std::string &cmd);
   void handleEvent(const EventInfo &event);
 
 protected:
