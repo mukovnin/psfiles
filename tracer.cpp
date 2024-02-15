@@ -113,6 +113,9 @@ std::string Tracer::readLink(const std::string &path) {
   }
   if (size_t len = out.find('\0'); len != std::string::npos)
     out.resize(len);
+  const std::string deleted = " (deleted)";
+  if (out.ends_with(deleted) && !std::filesystem::exists(out))
+    out.erase(out.size() - deleted.size());
   return out;
 }
 
