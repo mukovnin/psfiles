@@ -51,6 +51,7 @@ int main(int argc, char **argv) {
     input.reset(new Input(inCallback));
   }
 
+  output->setFilter(args.filter());
   output->setSorting(args.sortType());
   if (args.reverseSorting())
     output->toggleSortingOrder();

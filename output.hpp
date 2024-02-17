@@ -22,6 +22,7 @@ public:
   void setSorting(Column column);
   void toggleSortingOrder();
   void setProcessInfo(pid_t pid, const std::string &cmd);
+  void setFilter(const std::string &filter);
   void handleEvent(const EventInfo &event);
 
 protected:
@@ -53,6 +54,7 @@ private:
     uint8_t specialEvents{0};
     pid_t lastThread{0};
     std::tm lastAccess{};
+    bool filtered{false};
   };
   static constexpr size_t idxWidth{4};
   static constexpr size_t fixedHeaderHeight{3};
@@ -62,7 +64,8 @@ private:
   std::atomic_bool reverseSorting{false};
   pid_t pid{0};
   std::wstring cmd;
-  std::vector<Entry> list;
+  std::string filter;
+  std::vector<Entry> list, flist;
   mutable std::mutex mtx;
   std::thread thread;
   int eventFd{-1}, timerFd{-1};

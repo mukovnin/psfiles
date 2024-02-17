@@ -10,9 +10,10 @@ private:
     char shortName;
     const char *longName, *argName, *description;
   };
-  static constexpr std::array<Arg, 5> argsList{
+  static constexpr std::array<Arg, 6> argsList{
       {{'o', "output", "FILE", "output to FILE instead of stdout"},
        {'s', "sort", "COLUMN", "sort output by COLUMN"},
+       {'f', "filter", "GLOB", "filter filepaths with GLOB"},
        {'d', "delay", "SECONDS", "interval between list updates"},
        {'p', "pid", "PID", "attach to existing process with id PID"},
        {'c', "cmdline", "CMDLINE", "spawn new process with CMDLINE"}}};
@@ -24,6 +25,7 @@ private:
   unsigned mDelay{1};
   char *const *mTraceeArgs{nullptr};
   const char *mOutputFile{nullptr};
+  const char *mFilter{"*"};
   bool parse(int argc, char **argv);
   void printUsage() const;
 
@@ -35,5 +37,6 @@ public:
   unsigned delay() const;
   char *const *traceeArgs() const;
   const char *outputFile() const;
+  const char *filter() const;
   operator bool() const;
 };

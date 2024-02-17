@@ -61,6 +61,10 @@ bool ArgsParser::parse(int argc, char **argv) {
       }
       break;
     }
+    case 'f': {
+      mFilter = optarg;
+      break;
+    }
     case 'p': {
       const char *first = optarg, *last = optarg + strlen(optarg);
       auto [ptr, ec] = std::from_chars(first, last, mTraceePid);
@@ -102,6 +106,8 @@ unsigned ArgsParser::delay() const { return mDelay; }
 
 const char *ArgsParser::outputFile() const { return mOutputFile; }
 
+const char *ArgsParser::filter() const { return mFilter; }
+
 ArgsParser::operator bool() const { return success; }
 
 void ArgsParser::printUsage() const {
@@ -111,7 +117,7 @@ void ArgsParser::printUsage() const {
     std::cout << std::left << std::setw(25) << left << arg.description
               << std::endl;
   };
-  std::cout << "Usage:\n" << exe << " [-osd] -p | -c\n";
+  std::cout << "Usage:\n" << exe << " [-osdf] -p | -c\n";
   std::for_each(argsList.cbegin(), argsList.cend(), print);
   std::cout << "Column names: ";
   std::copy(std::cbegin(columnNames), std::cend(columnNames),

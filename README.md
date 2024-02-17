@@ -19,6 +19,7 @@ Linux kernel >= 5.3
 * **[--output, -o]:** path to output file. Default: *stdout*.
 * **[--delay, -d]:** interval (seconds) between file list updates. Default: *1*.
 * **[--sort, -s]:** column name to sort by (append "-" to column name to sorting in descending order). Default: *path*.
+* **[--filter, -f]:** glob to filter file paths. Default: *\**.
 * **--pid, -p:** attach to existing process with specified *pid*.
 * **--cmdline, -c:** spawn new process with specified *cmdline*. Incompatible with **--pid** option. It should be the last option.
 

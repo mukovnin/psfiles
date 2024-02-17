@@ -5,7 +5,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <fnmatch.h>
 #include <iomanip>
+#include <iterator>
 #include <limits>
 #include <linux/limits.h>
 #include <numeric>
@@ -36,6 +38,8 @@ Output::Output(unsigned delay) {
     close(eventFd);
     timerFd = eventFd = -1;
   }
+  list.reserve(10000);
+  flist.reserve(10000);
 }
 
 Output::~Output() {
@@ -127,6 +131,11 @@ void Output::setProcessInfo(pid_t pid, const std::string &cmd) {
   this->cmd = conv.from_bytes(cmd);
 }
 
+void Output::setFilter(const std::string &filter) {
+  std::lock_guard lck(mtx);
+  this->filter = filter;
+}
+
 void Output::handleEvent(const EventInfo &info) {
   if (info.path.empty())
     return;
@@ -134,6 +143,7 @@ void Output::handleEvent(const EventInfo &info) {
     return;
   std::lock_guard lck(mtx);
   auto &item = getEntry(conv.from_bytes(info.path));
+  item.filtered = fnmatch(filter.c_str(), info.path.c_str(), 0) == 0;
   item.lastThread = info.pid;
   item.lastAccess = now();
   switch (info.type) {
@@ -184,11 +194,14 @@ void Output::update() {
   std::lock_guard lck(mtx);
   clear();
   printProcessInfo();
-  auto it = std::max_element(list.cbegin(), list.cend(),
+  flist.clear();
+  std::copy_if(list.cbegin(), list.cend(), std::back_inserter(flist),
+               [](const Entry &e) { return e.filtered; });
+  auto it = std::max_element(flist.cbegin(), flist.cend(),
                              [](auto &&first, auto &&second) {
                                return first.path.size() < second.path.size();
                              });
-  if (it == list.cend())
+  if (it == flist.cend())
     return;
   size_t maxPathWidth = it->path.size();
   size_t otherColsWidth = std::accumulate(&colWidth[ColPath + 1],
@@ -199,14 +212,14 @@ void Output::update() {
   printColumnHeaders();
   sort();
   auto [begin, end] = linesRange();
-  end = std::min(end, list.size());
+  end = std::min(end, flist.size());
   for (size_t i = begin; i < end; ++i)
-    printEntry(i + 1, list[i]);
+    printEntry(i + 1, flist[i]);
 }
 
 size_t Output::count() const {
   std::lock_guard lck(mtx);
-  return list.size();
+  return flist.size();
 }
 
 void Output::sort() {
@@ -240,7 +253,7 @@ void Output::sort() {
       return true;
     }
   };
-  std::stable_sort(list.begin(), list.end(), compare);
+  std::stable_sort(flist.begin(), flist.end(), compare);
 }
 
 void Output::printEntry(size_t index, const Entry &entry) {
@@ -286,8 +299,9 @@ void Output::printProcessInfo() {
   if (maxWidth() <= left)
     return;
   stream() << std::setw(left) << "PID: " << pid << std::endl
-           << std::setw(left) << "Command line: "
-           << truncString(cmd, maxWidth() - left, false) << std::endl;
+           << std::setw(left)
+           << "Command line: " << truncString(cmd, maxWidth() - left, false)
+           << std::endl;
 }
 
 std::tm Output::now() const {
