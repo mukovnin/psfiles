@@ -278,10 +278,10 @@ void Output::printEntry(size_t index, const Entry &entry) {
 
 void Output::printColumnHeaders() {
   auto &s = stream();
-  if (visibleColumnNumbers()) {
-    std::wstring ss = L"[S]:" +
+  if (visibleControlHints()) {
+    std::wstring ss = L"[s]:" +
                       std::to_wstring(static_cast<unsigned>(sorting.load())) +
-                      L"," + (reverseSorting ? L"-" : L"+");
+                      (reverseSorting ? L"-" : L"+") + L" [n]↓ [p]↑ [q]";
     s << ss;
     s << std::setw(idxWidth + colWidth[ColPath] - ss.size()) << "[0]";
     for (size_t i = ColPath + 1; i < ColumnsCount; ++i)
@@ -359,7 +359,7 @@ std::wstring Output::formatEvents(uint8_t events) const {
 }
 
 size_t Output::headerHeight() const {
-  return fixedHeaderHeight + visibleColumnNumbers();
+  return fixedHeaderHeight + visibleControlHints();
 }
 
 FileOutput::FileOutput(const char *path, unsigned delay)
@@ -381,7 +381,7 @@ std::pair<size_t, size_t> FileOutput::linesRange() const {
   return {0, std::numeric_limits<size_t>::max()};
 }
 
-bool FileOutput::visibleColumnNumbers() const { return false; }
+bool FileOutput::visibleControlHints() const { return false; }
 
 size_t TerminalOutput::nCols;
 size_t TerminalOutput::nRows;
@@ -437,4 +437,4 @@ std::pair<size_t, size_t> TerminalOutput::linesRange() const {
   return {scrollDelta, scrollDelta + nRows - headerHeight()};
 }
 
-bool TerminalOutput::visibleColumnNumbers() const { return true; }
+bool TerminalOutput::visibleControlHints() const { return true; }

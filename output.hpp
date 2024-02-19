@@ -35,7 +35,7 @@ protected:
   virtual void clear() = 0;
   virtual size_t maxWidth() const = 0;
   virtual std::pair<size_t, size_t> linesRange() const = 0;
-  virtual bool visibleColumnNumbers() const = 0;
+  virtual bool visibleControlHints() const = 0;
 
 private:
   struct Entry {
@@ -58,7 +58,7 @@ private:
   };
   static constexpr size_t idxWidth{4};
   static constexpr size_t fixedHeaderHeight{3};
-  static constexpr size_t minPathColWidth{10};
+  static constexpr size_t minPathColWidth{20};
   size_t colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 5, 11, 12};
   std::atomic<Column> sorting{ColPath};
   std::atomic_bool reverseSorting{false};
@@ -93,7 +93,7 @@ protected:
   virtual void clear() override;
   virtual size_t maxWidth() const override;
   virtual std::pair<size_t, size_t> linesRange() const override;
-  virtual bool visibleColumnNumbers() const override;
+  virtual bool visibleControlHints() const override;
 
 private:
   std::wofstream file;
@@ -111,7 +111,7 @@ protected:
   virtual void clear() override;
   virtual size_t maxWidth() const override;
   virtual std::pair<size_t, size_t> linesRange() const override;
-  virtual bool visibleColumnNumbers() const override;
+  virtual bool visibleControlHints() const override;
 
 private:
   static size_t nCols;
