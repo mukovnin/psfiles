@@ -20,6 +20,8 @@
 #include <unistd.h>
 
 Output::Output(unsigned delay) {
+  nonPathColsWidth = std::accumulate(&colWidth[ColPath + 1],
+                                     &colWidth[ColumnsCount], idxWidth);
   if ((eventFd = eventfd(0, 0)) == -1) {
     LOGPE("eventfd");
     return;
@@ -39,7 +41,6 @@ Output::Output(unsigned delay) {
     timerFd = eventFd = -1;
   }
   list.reserve(10000);
-  flist.reserve(10000);
 }
 
 Output::~Output() {
@@ -116,12 +117,14 @@ void Output::stop() {
 void Output::setSorting(Column column) {
   if (sorting != column) {
     sorting = column;
+    changed = true;
     update();
   }
 }
 
 void Output::toggleSortingOrder() {
   reverseSorting = !reverseSorting;
+  changed = true;
   update();
 }
 
@@ -188,42 +191,48 @@ void Output::handleEvent(const EventInfo &info) {
     break;
   }
   }
+  changed = true;
 }
 
 void Output::update() {
   std::lock_guard lck(mtx);
   clear();
   printProcessInfo();
-  flist.clear();
-  std::copy_if(list.cbegin(), list.cend(), std::back_inserter(flist),
-               [](const Entry &e) { return e.filtered; });
-  auto it = std::max_element(flist.cbegin(), flist.cend(),
-                             [](auto &&first, auto &&second) {
-                               return first.path.size() < second.path.size();
-                             });
-  if (it == flist.cend())
+  if (maxWidth() < nonPathColsWidth + minPathColWidth) {
+    stream() << "[insufficient width]\n";
     return;
-  size_t maxPathWidth = it->path.size();
-  size_t otherColsWidth = std::accumulate(&colWidth[ColPath + 1],
-                                          &colWidth[ColumnsCount], idxWidth);
-  if (maxWidth() < otherColsWidth + minPathColWidth)
+  }
+  if (changed) {
+    sort();
+    filteredCount = 0;
+    maxPathWidth = 0;
+    for (const auto &e : list) {
+      if (e.filtered) {
+        ++filteredCount;
+        maxPathWidth = std::max(maxPathWidth, e.path.size());
+      }
+    }
+    changed = false;
+  }
+  if (!maxPathWidth)
     return;
-  colWidth[ColPath] = std::min(maxPathWidth, maxWidth() - otherColsWidth);
+  colWidth[ColPath] = std::min(maxPathWidth, maxWidth() - nonPathColsWidth);
   printColumnHeaders();
-  sort();
   auto [begin, end] = linesRange();
-  end = std::min(end, flist.size());
+  end = std::min(end, filteredCount);
   for (size_t i = begin; i < end; ++i)
-    printEntry(i + 1, flist[i]);
+    printEntry(i + 1, list[i]);
 }
 
 size_t Output::count() const {
   std::lock_guard lck(mtx);
-  return flist.size();
+  return filteredCount;
 }
 
 void Output::sort() {
   auto compare = [this](const Entry &first, const Entry &second) {
+    if (first.filtered != second.filtered)
+      return first.filtered;
     const auto &f = reverseSorting ? second : first;
     const auto &s = reverseSorting ? first : second;
     switch (sorting) {
@@ -253,7 +262,7 @@ void Output::sort() {
       return true;
     }
   };
-  std::stable_sort(flist.begin(), flist.end(), compare);
+  std::stable_sort(list.begin(), list.end(), compare);
 }
 
 void Output::printEntry(size_t index, const Entry &entry) {
@@ -288,7 +297,11 @@ void Output::printColumnHeaders() {
       s << std::setw(colWidth[i]) << (L"[" + std::to_wstring(i) + L"]");
     s << std::endl;
   }
-  s << std::setw(idxWidth + colWidth[ColPath]) << columnNames[ColPath];
+  std::wstring sCount = L"(" + std::to_wstring(filteredCount) +
+                        (filteredCount == 1 ? L" file" : L" files") + L")";
+  s << sCount;
+  s << std::setw(idxWidth + colWidth[ColPath] - sCount.size())
+    << columnNames[ColPath];
   for (size_t i = ColPath + 1; i < ColumnsCount; ++i)
     s << std::setw(colWidth[i]) << columnNames[i];
   s << std::endl;
@@ -313,10 +326,10 @@ std::tm Output::now() const {
 Output::Entry &Output::getEntry(const std::wstring &path) {
   auto it = std::find_if(list.begin(), list.end(),
                          [&](auto &&item) { return item.path == path; });
-  bool found = it != list.end();
-  if (!found)
-    list.emplace_back(Entry{path});
-  return found ? *it : list.back();
+  if (it != list.end())
+    return *it;
+  list.emplace_back(Entry{path});
+  return list.back();
 }
 
 std::wstring Output::truncString(const std::wstring &str, size_t maxSize,
