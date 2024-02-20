@@ -83,8 +83,8 @@ private:
   std::tm now() const;
   std::wstring truncString(const std::wstring &str, size_t maxSize,
                            bool left) const;
-  std::wstring formatSize(size_t size) const;
-  std::wstring formatEvents(uint8_t state) const;
+  std::string formatSize(size_t size) const;
+  std::string formatEvents(uint8_t state) const;
 };
 
 class FileOutput : public Output {

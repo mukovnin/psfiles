@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <fnmatch.h>
 #include <iomanip>
 #include <iterator>
@@ -270,14 +271,14 @@ void Output::printEntry(size_t index, const Entry &entry) {
   s << std::left << std::setw(idxWidth) << index << std::right;
   s << std::setw(colWidth[ColPath])
     << truncString(entry.path, colWidth[ColPath], true);
-  s << std::setw(colWidth[ColWriteSize]) << formatSize(entry.writeSize);
-  s << std::setw(colWidth[ColReadSize]) << formatSize(entry.readSize);
+  s << std::setw(colWidth[ColWriteSize]) << formatSize(entry.writeSize).c_str();
+  s << std::setw(colWidth[ColReadSize]) << formatSize(entry.readSize).c_str();
   s << std::setw(colWidth[ColWriteCount]) << entry.writeCount;
   s << std::setw(colWidth[ColReadCount]) << entry.readCount;
   s << std::setw(colWidth[ColOpenCount]) << entry.openCount;
   s << std::setw(colWidth[ColCloseCount]) << entry.closeCount;
   s << std::setw(colWidth[ColSpecialEvents])
-    << formatEvents(entry.specialEvents);
+    << formatEvents(entry.specialEvents).c_str();
   s << std::setw(colWidth[ColLastThread]) << entry.lastThread;
   char timeString[50];
   std::strftime(timeString, sizeof(timeString), "%X", &entry.lastAccess);
@@ -348,18 +349,21 @@ std::wstring Output::truncString(const std::wstring &str, size_t maxSize,
   return str.substr(0, maxSize - fillLen) + fill;
 }
 
-std::wstring Output::formatSize(size_t size) const {
-  const std::wstring suffixes = L"bKMGT";
+std::string Output::formatSize(size_t size) const {
+  if (size < 1024)
+    return std::to_string(size) + "b";
+  const std::string suffixes = "KMGT";
+  float fsize = size;
   size_t i = 0;
-  while (size > 1024 && i < suffixes.size() - 1) {
-    size /= 1024;
+  while ((fsize /= 1024) >= 1000 && i < suffixes.size() - 1)
     ++i;
-  }
-  return std::to_wstring(size) + suffixes[i];
+  char buf[7] {};
+  std::snprintf(buf, sizeof(buf), "%4.1f%c", fsize, suffixes[i]);
+  return buf;
 }
 
-std::wstring Output::formatEvents(uint8_t events) const {
-  std::wstring s;
+std::string Output::formatEvents(uint8_t events) const {
+  std::string s;
   if (events & Entry::EventMapped)
     s += 'm';
   if (events & Entry::EventRenamed)
