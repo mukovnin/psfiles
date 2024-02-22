@@ -293,12 +293,18 @@ bool Tracer::handleSyscall(pid_t tid) {
       EventInfo ei{};
       switch (nr) {
       case __NR_read:
-      case __NR_readv: {
+      case __NR_readv:
+      case __NR_preadv:
+      case __NR_preadv2:
+      case __NR_pread64: {
         ei = {tid, Event::Read, filePath(args[0]), (size_t)rval};
         break;
       }
       case __NR_write:
-      case __NR_writev: {
+      case __NR_writev:
+      case __NR_pwritev:
+      case __NR_pwritev2:
+      case __NR_pwrite64: {
         ei = {tid, Event::Write, filePath(args[0]), (size_t)rval};
         break;
       }
