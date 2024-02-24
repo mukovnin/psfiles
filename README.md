@@ -1,18 +1,20 @@
 # What is this?
 
 **psfiles** is a simple utility to view file system activity of Linux processes.
-Only regular *read(v)*, *write(v)*, *open(at)*, *close*, *rename*, *unlink* syscalls are traced.
+Only regular *(p)read(v)*, *(p)write(v)*, *open(at)*, *close*, *rename(at)*, *unlink(at)* syscalls are traced.
 If the file has been memory mapped, this utility will NOT show the number of bytes read or written.
 
 # Features
 
 * start new process or attach to existing one and trace its file system activity
 * output results to standard output or save results to file
-* custom results sorting
+* custom results sorting and filtering
 
 # System requirements
 
-Linux kernel >= 5.3
+* 64 bit architecture
+* Linux kernel >= 5.3
+* Glibc >= 2.31 or Musl >= 1.2.0
 
 # Options
 
@@ -28,9 +30,9 @@ Linux kernel >= 5.3
 * **path** - path to file,
 * **wsize** - write size in bytes,
 * **rsize** - read size in bytes,
-* **wcount** - write/writev syscalls count,
-* **rcount** - read/readv syscalls count,
-* **ocount** - open/openat/creat syscalls count,
+* **wcount** - (p)write(v) syscalls count,
+* **rcount** - (p)read(v) syscalls count,
+* **ocount** - open(at)/creat syscalls count,
 * **ccount** - close syscalls count,
 * **spec** - special file events indicator: memory map (m), rename (r), unlink (u),
 * **lthread**, **laccess** - thread id and time of the last system call listed above.
@@ -42,8 +44,8 @@ Linux kernel >= 5.3
 Start new process, sort descending by write size, output to file, update output every minute:
 * <code>psfiles -d 60 -s wsize- -o output.txt -c emacs /home/user/cpp/main.cpp</code>
 
-Attach to existing process, sort by path, output to stdout, update output every second:
-* <code>psfiles -p $(pidof emacs)</code>
+Attach to existing process, sort by path, output to stdout, update output every second, filter files from user home directory:
+* <code>psfiles -f "/home/user/*" -p $(pidof gedit)</code>
 
 # Control
 

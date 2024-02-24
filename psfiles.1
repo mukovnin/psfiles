@@ -1,0 +1,103 @@
+.\" Manpage for psfiles.
+.TH man 1 "24 Feb 2024" "0.3.0" "psfiles man page"
+.SH NAME
+psfiles \- monitor file system activity of Linux process
+.SH SYNOPSIS
+.B psfiles
+.RI [ OPTION .\|.\|.]\&
+.B \-c
+.I CMDLINE
+.br
+.B psfiles
+.RI [ OPTION .\|.\|.]\&
+.B \-p
+.I PID
+.SH DESCRIPTION
+.B psfiles
+is a simple utility to view file system activity of Linux processes.
+.br
+Only regular (p)read(v), (p)write(v), open(at), close, rename(at), unlink(at) syscalls are traced.
+.br
+If the file has been memory mapped, this utility will NOT show the number of bytes read or written.
+.SH OPTIONS
+.TP
+.BI "-o, --output" " FILE"
+Path to output file. Default: stdout.
+.TP
+.BI "-d, --delay" " SECS"
+Interval (seconds) between file list updates. Default: 1.
+.TP
+.BI "-s, --sort" " COLUMN"
+Column name to sort by (append "-" to column name to sorting in descending order). Default: path.
+.TP
+.BI "-f, --filter" " GLOB"
+Glob to filter file paths. Default: *.
+.TP
+.BI "-p, --pid" " PID"
+Attach to existing process with specified pid.
+.TP
+.BI "-c, --cmdline" " CMDLINE"
+Spawn new process with specified command line. Incompatible with
+.B --pid
+option. It should be the last option.
+.SH COLUMNS
+.TP
+.BI path
+file path
+.TP
+.BI wsize
+write size in bytes
+.TP
+.BI rsize
+read size in bytes
+.TP
+.BI wcount
+(p)write(v) syscalls count
+.TP
+.BI rcount
+(p)read(v) syscalls count
+.TP
+.BI ocount
+open(at)/creat syscalls count
+.TP
+.BI ccount
+close syscalls count
+.TP
+.BI spec
+special file events indicator: memory map (m), rename (r), unlink (u)
+.TP
+.BI "lthread, laccess"
+thread id and time of the last system call listed above
+.SH KEYBOARD CONTROL
+If
+.B\ --output
+option was not specified, keyboard control is available:
+.TP
+.BI "0 - 9"
+sort by specified column (0 - path, 1 - wsize, etc)
+.TP
+.BI s
+toggle sorting order
+.TP
+.BI n
+show next page (scroll down)
+.TP
+.BI p
+show previous page (scroll up)
+.TP
+.BI q
+quit
+.SH EXAMPLES
+.TP
+Start new process, sort descending by write size, output to file, update output every minute
+psfiles -d 60 -s wsize- -o output.txt -c emacs /home/user/cpp/main.cpp
+.TP
+Attach to existing process, sort by path, output to stdout, update output every second, show files from user home directory only:
+psfiles -f "/home/user/*" -p $(pidof gedit)
+.SH SEE ALSO
+.BR strace(1)
+.SH BUGS
+No known bugs.
+.SH AUTHOR
+Alexey Mukovnin (alexey.1983@gmail.com)
+
