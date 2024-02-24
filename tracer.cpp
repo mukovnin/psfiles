@@ -267,7 +267,7 @@ bool Tracer::iteration() {
 }
 
 bool Tracer::handleSyscall(pid_t tid) {
-  __ptrace_syscall_info si;
+  __ptrace_syscall_info si{};
   constexpr size_t sz{sizeof(__ptrace_syscall_info)};
   if (ptrace(PTRACE_GET_SYSCALL_INFO, tid, sz, &si) == -1) {
     LOGPE("ptrace (GET_SYSCALL_INFO)");
