@@ -88,6 +88,25 @@ Tracer::~Tracer() {
   if (spawned) {
     kill(mainPid, SIGTERM);
     LOGI("Sent SIGTERM to tracee (PID #).", mainPid);
+  } else if (attached) {
+    auto threads = getProcThreads();
+    size_t n{0};
+    for (auto p : threads) {
+      if (tgkill(mainPid, p, SIGSTOP) == -1) {
+        LOGPE("tgkill(SIGSTOP)");
+        continue;
+      }
+      waitpid(p, nullptr, 0);
+      if (ptrace(PTRACE_DETACH, p, nullptr, nullptr) == -1) {
+        LOGPE("ptrace(DETACH)");
+        continue;
+      }
+      if (tgkill(mainPid, p, SIGCONT) == -1)
+        LOGPE("tgkill(SIGCONT)");
+      else
+        ++n;
+    }
+    LOGI("Detached from process with PID # [# thread(s)].", mainPid, n);
   }
 }
 
