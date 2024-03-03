@@ -114,13 +114,18 @@ Tracer::~Tracer() {
 std::set<pid_t> Tracer::getProcThreads() {
   std::set<pid_t> ret;
   std::string s = "/proc/" + std::to_string(mainPid) + "/task";
-  for (const auto &dir_entry : std::filesystem::directory_iterator{s}) {
-    if (auto s = dir_entry.path().filename().string(); !s.empty()) {
-      pid_t p;
-      auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), p);
-      if (ec == std::errc() && ptr == s.data() + s.size())
-        ret.insert(p);
+  try {
+    for (const auto &dir_entry : std::filesystem::directory_iterator{s}) {
+      if (auto s = dir_entry.path().filename().string(); !s.empty()) {
+        pid_t p;
+        auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), p);
+        if (ec == std::errc() && ptr == s.data() + s.size())
+          ret.insert(p);
+      }
     }
+  } catch (const std::filesystem::filesystem_error &e) {
+    LOGE("Threads enumeration error: #.", e.what());
+    lastErr = ESRCH;
   }
   return ret;
 }
