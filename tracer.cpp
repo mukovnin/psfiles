@@ -22,7 +22,7 @@
 
 sig_atomic_t Tracer::terminate{0};
 
-Tracer::Tracer(pid_t pid, EventCallback cb) : mainPid(pid), callback(cb) {
+Tracer::Tracer(pid_t pid) : mainPid(pid) {
   if (!setSignalHandler())
     return;
   cmdLine = getCmdLine();
@@ -52,7 +52,7 @@ Tracer::Tracer(pid_t pid, EventCallback cb) : mainPid(pid), callback(cb) {
        threads.size());
 }
 
-Tracer::Tracer(char *const *argv, EventCallback cb) : callback(cb) {
+Tracer::Tracer(char *const *argv) {
   if (!setSignalHandler())
     return;
   mainPid = fork();
@@ -110,6 +110,8 @@ Tracer::~Tracer() {
     LOGI("Detached from process with PID # [# thread(s)].", mainPid, n);
   }
 }
+
+void Tracer::setOutputCallback(EventCallback cb) { callback = cb; }
 
 std::set<pid_t> Tracer::getProcThreads() {
   std::set<pid_t> ret;
@@ -400,7 +402,8 @@ bool Tracer::handleSyscall(pid_t tid) {
       if (ei.pid) {
         ei.path = fixRelativePath(ei.path);
         ei.strArg = fixRelativePath(ei.strArg);
-        callback(ei);
+        if (callback)
+          callback(ei);
       }
     }
     state.erase(it);

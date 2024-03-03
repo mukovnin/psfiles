@@ -40,13 +40,14 @@ private:
   static void signalHandler(int);
 
 public:
-  Tracer(pid_t pid, EventCallback cb);
-  Tracer(char *const *argv, EventCallback cb);
+  Tracer(pid_t pid);
+  Tracer(char *const *argv);
   Tracer(const Tracer &) = delete;
   Tracer &operator=(const Tracer &) = delete;
   Tracer(Tracer &&) = delete;
   Tracer &operator=(Tracer &&) = delete;
   ~Tracer();
+  void setOutputCallback(EventCallback cb);
   bool loop();
   pid_t traceePid() const;
   std::string traceeCmdLine() const;

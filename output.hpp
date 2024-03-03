@@ -17,11 +17,10 @@
 
 class Output {
 public:
-  Output(unsigned delay);
+  Output(pid_t pid, const std::string &cmd, unsigned delay);
   virtual ~Output();
   void setSorting(Column column);
   void toggleSortingOrder();
-  void setProcessInfo(pid_t pid, const std::string &cmd);
   void setFilter(const std::string &filter);
   void handleEvent(const EventInfo &event);
 
@@ -67,13 +66,13 @@ private:
   size_t filteredCount{0};
   bool changed{false};
   pid_t pid{0};
+  std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
   std::wstring cmd;
   std::string filter;
   std::vector<Entry> list;
   mutable std::mutex mtx;
   std::thread thread;
   int eventFd{-1}, timerFd{-1};
-  std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
   void threadRoutine();
   void sort();
   void printEntry(size_t index, const Entry &entry);
@@ -89,7 +88,8 @@ private:
 
 class FileOutput : public Output {
 public:
-  FileOutput(const char *path, unsigned delay);
+  FileOutput(const char *path, pid_t pid, const std::string &cmd,
+             unsigned delay);
   virtual ~FileOutput();
 
 protected:
@@ -105,7 +105,7 @@ private:
 
 class TerminalOutput : public Output {
 public:
-  TerminalOutput(unsigned delay);
+  TerminalOutput(pid_t pid, const std::string &cmd, unsigned delay);
   virtual ~TerminalOutput();
   void pageUp();
   void pageDown();

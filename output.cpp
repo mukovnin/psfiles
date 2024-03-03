@@ -20,7 +20,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-Output::Output(unsigned delay) {
+Output::Output(pid_t pid, const std::string &cmd, unsigned delay)
+    : pid(pid), cmd(conv.from_bytes(cmd)) {
   nonPathColsWidth = std::accumulate(&colWidth[ColPath + 1],
                                      &colWidth[ColumnsCount], idxWidth);
   if ((eventFd = eventfd(0, 0)) == -1) {
@@ -127,12 +128,6 @@ void Output::toggleSortingOrder() {
   reverseSorting = !reverseSorting;
   changed = true;
   update();
-}
-
-void Output::setProcessInfo(pid_t pid, const std::string &cmd) {
-  std::lock_guard lck(mtx);
-  this->pid = pid;
-  this->cmd = conv.from_bytes(cmd);
 }
 
 void Output::setFilter(const std::string &filter) {
@@ -357,7 +352,7 @@ std::string Output::formatSize(size_t size) const {
   size_t i = 0;
   while ((fsize /= 1024) >= 1000 && i < suffixes.size() - 1)
     ++i;
-  char buf[7] {};
+  char buf[7]{};
   std::snprintf(buf, sizeof(buf), "%4.1f%c", fsize, suffixes[i]);
   return buf;
 }
@@ -379,8 +374,9 @@ size_t Output::headerHeight() const {
   return fixedHeaderHeight + visibleControlHints();
 }
 
-FileOutput::FileOutput(const char *path, unsigned delay)
-    : Output(delay), file(path) {
+FileOutput::FileOutput(const char *path, pid_t pid, const std::string &cmd,
+                       unsigned delay)
+    : Output(pid, cmd, delay), file(path) {
   start();
 }
 
@@ -403,7 +399,9 @@ bool FileOutput::visibleControlHints() const { return false; }
 size_t TerminalOutput::nCols;
 size_t TerminalOutput::nRows;
 
-TerminalOutput::TerminalOutput(unsigned delay) : Output(delay) {
+TerminalOutput::TerminalOutput(pid_t pid, const std::string &cmd,
+                               unsigned delay)
+    : Output(pid, cmd, delay) {
   signal(SIGWINCH, &TerminalOutput::sigwinchHandler);
   updateWindowSize();
   start();

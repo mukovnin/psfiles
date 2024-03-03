@@ -19,8 +19,22 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
 
   pthread_t mainThread = pthread_self();
-  std::unique_ptr<Input> input;
+
+  Tracer tracer = args.traceeArgs() ? Tracer(args.traceeArgs())
+                                    : Tracer(args.traceePid());
+
   std::unique_ptr<Output> output;
+  if (auto file = args.outputFile()) {
+    output.reset(new FileOutput(file, tracer.traceePid(),
+                                tracer.traceeCmdLine(), args.delay()));
+  } else {
+    output.reset(new TerminalOutput(tracer.traceePid(), tracer.traceeCmdLine(),
+                                    args.delay()));
+  }
+  output->setFilter(args.filter());
+  output->setSorting(args.sortType());
+  if (args.reverseSorting())
+    output->toggleSortingOrder();
 
   auto inCallback = [&](Command cmd, unsigned arg) {
     switch (cmd) {
@@ -34,32 +48,22 @@ int main(int argc, char **argv) {
       output->setSorting(static_cast<Column>(arg));
       break;
     case Command::Up:
-      dynamic_cast<TerminalOutput *>(output.get())->pageUp();
+      if (auto out = dynamic_cast<TerminalOutput *>(output.get()))
+        out->pageUp();
       break;
     case Command::Down:
-      dynamic_cast<TerminalOutput *>(output.get())->pageDown();
+      if (auto out = dynamic_cast<TerminalOutput *>(output.get()))
+        out->pageDown();
       break;
     }
   };
 
-  auto outCallback = [&](const EventInfo &ei) { output->handleEvent(ei); };
-
-  if (auto file = args.outputFile()) {
-    output.reset(new FileOutput(file, args.delay()));
-  } else {
-    output.reset(new TerminalOutput(args.delay()));
+  std::unique_ptr<Input> input;
+  if (!args.outputFile())
     input.reset(new Input(inCallback));
-  }
 
-  output->setFilter(args.filter());
-  output->setSorting(args.sortType());
-  if (args.reverseSorting())
-    output->toggleSortingOrder();
-
-  Tracer tracer = args.traceeArgs() ? Tracer(args.traceeArgs(), outCallback)
-                                    : Tracer(args.traceePid(), outCallback);
-
-  output->setProcessInfo(tracer.traceePid(), tracer.traceeCmdLine());
+  auto outCallback = [&](const EventInfo &ei) { output->handleEvent(ei); };
+  tracer.setOutputCallback(outCallback);
 
   return tracer.loop() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
