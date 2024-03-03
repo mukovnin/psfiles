@@ -9,10 +9,10 @@
 
 enum LogType { LogInfo, LogWarning, LogError };
 
-#define LOG(lvl, fmt, ...) logImpl(__FILE__, __LINE__, lvl, fmt, ##__VA_ARGS__)
-#define LOGI(fmt, ...) LOG(LogInfo, fmt, ##__VA_ARGS__)
-#define LOGW(fmt, ...) LOG(LogWarning, fmt, ##__VA_ARGS__)
-#define LOGE(fmt, ...) LOG(LogError, fmt, ##__VA_ARGS__)
+#define LOG(lvl, fmt, ...) logImpl(__FILE__, __LINE__, lvl, fmt __VA_OPT__(,) __VA_ARGS__)
+#define LOGI(fmt, ...) LOG(LogInfo, fmt __VA_OPT__(,) __VA_ARGS__)
+#define LOGW(fmt, ...) LOG(LogWarning, fmt __VA_OPT__(,) __VA_ARGS__)
+#define LOGE(fmt, ...) LOG(LogError, fmt __VA_OPT__(,) __VA_ARGS__)
 #define LOGPE(syscall) LOGE(#syscall ": error # (#).", errno, strerror(errno))
 
 static const char *logTypes[] = {"INFO", "WARN", "ERR"};
