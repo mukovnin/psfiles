@@ -85,6 +85,7 @@ Tracer::Tracer(char *const *argv, EventCallback cb) : callback(cb) {
 }
 
 Tracer::~Tracer() {
+  LOGI("Tracer termination reason: #.", strerror(lastErr));
   if (spawned) {
     kill(mainPid, SIGTERM);
     LOGI("Sent SIGTERM to tracee (PID #).", mainPid);
@@ -244,6 +245,7 @@ bool Tracer::iteration() {
   do {
     int status;
     tid = waitpid(-1, &status, __WALL);
+    lastErr = errno;
     if (tid == -1) {
       switch (errno) {
       case EINTR: {
@@ -272,6 +274,7 @@ bool Tracer::iteration() {
           return false;
         int corrSig = (sig == SIGTRAP || sig == (SIGTRAP | 0x80)) ? 0 : sig;
         if (ptrace(PTRACE_SYSCALL, tid, 0, corrSig) == -1) {
+          lastErr = errno;
           LOGPE("ptrace (SYSCALL)");
           return false;
         }
@@ -289,6 +292,7 @@ bool Tracer::handleSyscall(pid_t tid) {
   __ptrace_syscall_info si{};
   constexpr size_t sz{sizeof(__ptrace_syscall_info)};
   if (ptrace(PTRACE_GET_SYSCALL_INFO, tid, sz, &si) == -1) {
+    lastErr = errno;
     LOGPE("ptrace (GET_SYSCALL_INFO)");
     return false;
   }

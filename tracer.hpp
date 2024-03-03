@@ -22,6 +22,7 @@ private:
   std::string cmdLine;
   std::map<pid_t, SyscallState> state;
   bool spawned{false}, attached{false};
+  int lastErr{0};
   std::map<pid_t, std::string> closingFiles;
   static sig_atomic_t terminate;
   EventCallback callback;
