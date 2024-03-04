@@ -9,6 +9,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <list>
 #include <locale>
 #include <mutex>
 #include <queue>
@@ -16,7 +17,7 @@
 #include <string>
 #include <sys/types.h>
 #include <thread>
-#include <vector>
+#include <unordered_map>
 
 class Output {
 public:
@@ -74,8 +75,9 @@ private:
   std::string filter;
   std::chrono::duration<double> delay;
   std::chrono::time_point<std::chrono::steady_clock> lastUpdateTime;
-  std::vector<Entry> list;
+  std::list<Entry> list;
   size_t filteredCount{0};
+  std::unordered_map<std::string, Entry *> hashmap;
   std::queue<EventInfo> eventsQueue;
   bool updateReqEvent{false}, terminateReqEvent{false};
   mutable std::mutex mtxEvents, mtxParams, mtxCount;
@@ -88,7 +90,7 @@ private:
   void printProcessInfo();
   void printColumnHeaders();
   void processEvents();
-  Entry &getEntry(const std::wstring &path);
+  std::pair<Entry &, bool> getEntry(const std::string &path);
   std::tm now() const;
   std::wstring truncString(const std::wstring &str, size_t maxSize,
                            bool left) const;

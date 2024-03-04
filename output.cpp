@@ -21,7 +21,6 @@ Output::Output(pid_t pid, const std::string &cmd, const std::string &filter,
     : pid(pid), cmd(conv.from_bytes(cmd)), filter(filter), delay(delay) {
   nonPathColsWidth = std::accumulate(&colWidth[ColPath + 1],
                                      &colWidth[ColumnsCount], idxWidth);
-  list.reserve(10000);
 }
 
 Output::~Output() {}
@@ -121,8 +120,9 @@ void Output::processEvents() {
       info.strArg = fixRelativePath(info.strArg);
     if (auto c = info.path.front(); c != '/' && c != '*')
       continue;
-    auto &item = getEntry(conv.from_bytes(info.path));
-    item.filtered = fnmatch(filter.c_str(), info.path.c_str(), 0) == 0;
+    auto [item, inserted] = getEntry(info.path);
+    if (inserted)
+      item.filtered = fnmatch(filter.c_str(), info.path.c_str(), 0) == 0;
     item.lastThread = info.pid;
     item.lastAccess = now();
     switch (info.type) {
@@ -151,7 +151,7 @@ void Output::processEvents() {
     case Event::Rename: {
       item.specialEvents |= Entry::EventRenamed;
       auto src = item;
-      auto &dst = getEntry(conv.from_bytes(info.strArg));
+      auto [dst, inserted] = getEntry(info.strArg);
       dst.openCount += src.openCount;
       dst.closeCount += src.closeCount;
       dst.readCount += src.readCount;
@@ -194,9 +194,13 @@ void Output::update(bool recollect) {
   colWidth[ColPath] = std::min(maxPathWidth, maxWidth() - nonPathColsWidth);
   printColumnHeaders();
   auto [begin, end] = linesRange();
+  begin = std::min(begin, count());
   end = std::min(end, count());
-  for (size_t i = begin; i < end; ++i)
-    printEntry(i + 1, list[i]);
+  auto it = list.cbegin();
+  for (size_t i = 0; i < end; ++i, ++it) {
+    if (i >= begin)
+      printEntry(i + 1, *it);
+  }
 }
 
 size_t Output::count() const {
@@ -238,7 +242,7 @@ void Output::sort() {
     }
   };
   std::lock_guard lck(mtxParams);
-  std::stable_sort(list.begin(), list.end(), compare);
+  list.sort(compare);
 }
 
 void Output::printEntry(size_t index, const Entry &entry) {
@@ -303,13 +307,13 @@ std::tm Output::now() const {
   return *std::localtime(&time);
 }
 
-Output::Entry &Output::getEntry(const std::wstring &path) {
-  auto it = std::find_if(list.begin(), list.end(),
-                         [&](auto &&item) { return item.path == path; });
-  if (it != list.end())
-    return *it;
-  list.emplace_back(Entry{path});
-  return list.back();
+std::pair<Output::Entry &, bool> Output::getEntry(const std::string &path) {
+  auto [it, inserted] = hashmap.emplace(path, nullptr);
+  if (inserted) {
+    list.emplace_back(Entry{conv.from_bytes(path)});
+    it->second = &list.back();
+  }
+  return {*(it->second), inserted};
 }
 
 std::string Output::fixRelativePath(const std::string &path) {
