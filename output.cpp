@@ -1,6 +1,5 @@
 #include "output.hpp"
 #include "column.hpp"
-#include "log.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -11,10 +10,7 @@
 #include <iterator>
 #include <limits>
 #include <linux/limits.h>
-#include <mutex>
 #include <numeric>
-#include <queue>
-#include <regex>
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -121,7 +117,8 @@ void Output::processEvents() {
     if (info.path.empty())
       continue;
     info.path = fixRelativePath(info.path);
-    info.strArg = fixRelativePath(info.strArg);
+    if (!info.strArg.empty())
+      info.strArg = fixRelativePath(info.strArg);
     if (auto c = info.path.front(); c != '/' && c != '*')
       continue;
     auto &item = getEntry(conv.from_bytes(info.path));
@@ -316,13 +313,11 @@ Output::Entry &Output::getEntry(const std::wstring &path) {
 }
 
 std::string Output::fixRelativePath(const std::string &path) {
-  std::regex current(R"(/\./)");
-  std::regex parent(R"(/[^\./]+/\.\./)");
   std::string s(path);
-  while (regex_search(s, current))
-    s = regex_replace(s, current, "/");
-  while (regex_search(s, parent))
-    s = regex_replace(s, parent, "/");
+  while (regex_search(s, reCurrent))
+    s = regex_replace(s, reCurrent, "/");
+  while (regex_search(s, reParent))
+    s = regex_replace(s, reParent, "/");
   return s;
 }
 

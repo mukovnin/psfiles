@@ -12,6 +12,7 @@
 #include <locale>
 #include <mutex>
 #include <queue>
+#include <regex>
 #include <string>
 #include <sys/types.h>
 #include <thread>
@@ -60,6 +61,8 @@ private:
   static constexpr size_t idxWidth{5};
   static constexpr size_t fixedHeaderHeight{3};
   static constexpr size_t minPathColWidth{20};
+  const std::regex reCurrent{R"(/\./)"};
+  const std::regex reParent{R"(/[^\./]+/\.\./)"};
   size_t colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 5, 11, 12};
   size_t nonPathColsWidth;
   size_t maxPathWidth{0};
