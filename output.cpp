@@ -11,196 +11,179 @@
 #include <iterator>
 #include <limits>
 #include <linux/limits.h>
+#include <mutex>
 #include <numeric>
-#include <poll.h>
+#include <queue>
+#include <regex>
 #include <signal.h>
-#include <sys/eventfd.h>
 #include <sys/ioctl.h>
-#include <sys/timerfd.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-Output::Output(pid_t pid, const std::string &cmd, unsigned delay)
-    : pid(pid), cmd(conv.from_bytes(cmd)) {
+Output::Output(pid_t pid, const std::string &cmd, const std::string &filter,
+               unsigned delay)
+    : pid(pid), cmd(conv.from_bytes(cmd)), filter(filter), delay(delay) {
   nonPathColsWidth = std::accumulate(&colWidth[ColPath + 1],
                                      &colWidth[ColumnsCount], idxWidth);
-  if ((eventFd = eventfd(0, 0)) == -1) {
-    LOGPE("eventfd");
-    return;
-  }
-  if ((timerFd = timerfd_create(CLOCK_MONOTONIC, 0)) == -1) {
-    LOGPE("timerfd_create");
-    close(eventFd);
-    eventFd = -1;
-    return;
-  }
-  itimerspec ts{.it_interval = {.tv_sec = delay, .tv_nsec = 0},
-                .it_value = {.tv_sec = delay, .tv_nsec = 0}};
-  if (timerfd_settime(timerFd, 0, &ts, nullptr) != 0) {
-    LOGPE("timerfd_settime");
-    close(timerFd);
-    close(eventFd);
-    timerFd = eventFd = -1;
-  }
   list.reserve(10000);
 }
 
-Output::~Output() {
-  if (eventFd != -1)
-    close(eventFd);
-  if (timerFd != -1)
-    close(timerFd);
-}
+Output::~Output() {}
 
 void Output::threadRoutine() {
-  constexpr size_t nfds{2};
-  pollfd pfds[nfds]{{.fd = timerFd, .events = POLLIN, .revents = 0},
-                    {.fd = eventFd, .events = POLLIN, .revents = 0}};
-  bool stop{false};
-  while (!stop) {
-    if (int ret = poll(pfds, nfds, -1); ret == -1) {
-      if (errno == EINTR)
-        continue;
-      LOGPE("poll");
-      stop = true;
+  bool terminateReq{false}, listChanged{false};
+  auto duration = delay;
+  while (!terminateReq) {
+    bool emptyQueue, updateReq;
+    {
+      std::unique_lock lck(mtxEvents);
+      cv.wait_for(lck, duration, [this] {
+        return !eventsQueue.empty() || terminateReqEvent || updateReqEvent;
+      });
+      emptyQueue = eventsQueue.empty();
+      updateReq = updateReqEvent;
+      terminateReq = terminateReqEvent;
+      updateReqEvent = false;
+    }
+    if (!emptyQueue) {
+      processEvents();
+      listChanged = true;
+    }
+    auto t = std::chrono::steady_clock::now();
+    auto d = t - lastUpdateTime;
+    if (d >= delay || updateReq || terminateReq) {
+      update(updateReq || listChanged);
+      listChanged = false;
+      duration = delay;
+      lastUpdateTime = t;
     } else {
-      for (size_t i = 0; !stop && i < nfds; ++i) {
-        int fd = pfds[i].fd;
-        short revs = pfds[i].revents;
-        if (revs & POLLIN) {
-          uint64_t val;
-          char *p{reinterpret_cast<char *>(&val)};
-          size_t rest{sizeof(val)};
-          while (rest) {
-            ssize_t ret = read(fd, p, rest);
-            if (ret == -1 && errno != EINTR) {
-              LOGPE("read");
-              stop = true;
-              break;
-            }
-            rest -= ret;
-            p += ret;
-          }
-          if (fd == eventFd)
-            stop = true;
-          else if (!stop)
-            update();
-        } else if (revs & POLLERR) {
-          LOGE("Received POLLERR event.");
-          stop = true;
-        } else if (revs) {
-          LOGE("Received unexpected poll event: #0x#.", std::hex, revs);
-          stop = true;
-        }
-      }
+      duration = delay - d;
     }
   }
 }
 
 void Output::start() {
-  if (eventFd != -1 && timerFd != -1 && !thread.joinable())
+  if (!thread.joinable())
     thread = std::thread(&Output::threadRoutine, this);
 }
 
 void Output::stop() {
-  update();
   if (thread.joinable()) {
-    int64_t val{1};
-    ssize_t ret = write(eventFd, &val, sizeof(val));
-    if (ret == sizeof(val))
-      thread.join();
-    else if (ret == -1)
-      LOGPE("write (eventfd)");
-    else
-      LOGE("eventfd: partial write");
+    {
+      std::lock_guard lck(mtxEvents);
+      terminateReqEvent = true;
+    }
+    cv.notify_one();
+    thread.join();
   }
+}
+
+void Output::requestUpdate() {
+  {
+    std::lock_guard lck(mtxEvents);
+    updateReqEvent = true;
+  }
+  cv.notify_one();
 }
 
 void Output::setSorting(Column column) {
-  if (sorting != column) {
+  {
+    std::lock_guard lck(mtxParams);
     sorting = column;
-    changed = true;
-    update();
   }
+  requestUpdate();
 }
 
 void Output::toggleSortingOrder() {
-  reverseSorting = !reverseSorting;
-  changed = true;
-  update();
+  {
+    std::lock_guard lck(mtxParams);
+    reverseSorting = !reverseSorting;
+  }
+  requestUpdate();
 }
 
-void Output::setFilter(const std::string &filter) {
-  std::lock_guard lck(mtx);
-  this->filter = filter;
+void Output::queueEvent(const EventInfo &info) {
+  {
+    std::lock_guard lck(mtxEvents);
+    eventsQueue.push(info);
+  }
+  cv.notify_one();
 }
 
-void Output::handleEvent(const EventInfo &info) {
-  if (info.path.empty())
-    return;
-  if (auto c = info.path.front(); c != '/' && c != '*')
-    return;
-  std::lock_guard lck(mtx);
-  auto &item = getEntry(conv.from_bytes(info.path));
-  item.filtered = fnmatch(filter.c_str(), info.path.c_str(), 0) == 0;
-  item.lastThread = info.pid;
-  item.lastAccess = now();
-  switch (info.type) {
-  case Event::Open: {
-    ++item.openCount;
-    break;
+void Output::processEvents() {
+  std::queue<EventInfo> eventsQueueCopy;
+  {
+    std::lock_guard lck(mtxEvents);
+    std::swap(eventsQueue, eventsQueueCopy);
   }
-  case Event::Close: {
-    ++item.closeCount;
-    break;
+  for (; !eventsQueueCopy.empty(); eventsQueueCopy.pop()) {
+    EventInfo &info = eventsQueueCopy.front();
+    if (info.path.empty())
+      continue;
+    info.path = fixRelativePath(info.path);
+    info.strArg = fixRelativePath(info.strArg);
+    if (auto c = info.path.front(); c != '/' && c != '*')
+      continue;
+    auto &item = getEntry(conv.from_bytes(info.path));
+    item.filtered = fnmatch(filter.c_str(), info.path.c_str(), 0) == 0;
+    item.lastThread = info.pid;
+    item.lastAccess = now();
+    switch (info.type) {
+    case Event::Open: {
+      ++item.openCount;
+      break;
+    }
+    case Event::Close: {
+      ++item.closeCount;
+      break;
+    }
+    case Event::Read: {
+      ++item.readCount;
+      item.readSize += info.sizeArg;
+      break;
+    }
+    case Event::Write: {
+      ++item.writeCount;
+      item.writeSize += info.sizeArg;
+      break;
+    }
+    case Event::Map: {
+      item.specialEvents |= Entry::EventMapped;
+      break;
+    }
+    case Event::Rename: {
+      item.specialEvents |= Entry::EventRenamed;
+      auto src = item;
+      auto &dst = getEntry(conv.from_bytes(info.strArg));
+      dst.openCount += src.openCount;
+      dst.closeCount += src.closeCount;
+      dst.readCount += src.readCount;
+      dst.writeCount += src.writeCount;
+      dst.readSize += src.readSize;
+      dst.writeSize += src.writeSize;
+      dst.lastThread = src.lastThread;
+      dst.lastAccess = src.lastAccess;
+      break;
+    }
+    case Event::Unlink: {
+      item.specialEvents |= Entry::EventUnlinked;
+      break;
+    }
+    }
   }
-  case Event::Read: {
-    ++item.readCount;
-    item.readSize += info.sizeArg;
-    break;
-  }
-  case Event::Write: {
-    ++item.writeCount;
-    item.writeSize += info.sizeArg;
-    break;
-  }
-  case Event::Map: {
-    item.specialEvents |= Entry::EventMapped;
-    break;
-  }
-  case Event::Rename: {
-    item.specialEvents |= Entry::EventRenamed;
-    auto src = item;
-    auto &dst = getEntry(conv.from_bytes(info.strArg));
-    dst.openCount += src.openCount;
-    dst.closeCount += src.closeCount;
-    dst.readCount += src.readCount;
-    dst.writeCount += src.writeCount;
-    dst.readSize += src.readSize;
-    dst.writeSize += src.writeSize;
-    dst.lastThread = src.lastThread;
-    dst.lastAccess = src.lastAccess;
-    break;
-  }
-  case Event::Unlink: {
-    item.specialEvents |= Entry::EventUnlinked;
-    break;
-  }
-  }
-  changed = true;
 }
 
-void Output::update() {
-  std::lock_guard lck(mtx);
+void Output::update(bool recollect) {
   clear();
   printProcessInfo();
   if (maxWidth() < nonPathColsWidth + minPathColWidth) {
     stream() << "[insufficient width]\n";
     return;
   }
-  if (changed) {
-    sort();
+  if (recollect) {
+    std::lock_guard lck(mtxCount);
     filteredCount = 0;
+    sort();
     maxPathWidth = 0;
     for (const auto &e : list) {
       if (e.filtered) {
@@ -208,20 +191,19 @@ void Output::update() {
         maxPathWidth = std::max(maxPathWidth, e.path.size());
       }
     }
-    changed = false;
   }
   if (!maxPathWidth)
     return;
   colWidth[ColPath] = std::min(maxPathWidth, maxWidth() - nonPathColsWidth);
   printColumnHeaders();
   auto [begin, end] = linesRange();
-  end = std::min(end, filteredCount);
+  end = std::min(end, count());
   for (size_t i = begin; i < end; ++i)
     printEntry(i + 1, list[i]);
 }
 
 size_t Output::count() const {
-  std::lock_guard lck(mtx);
+  std::lock_guard lck(mtxCount);
   return filteredCount;
 }
 
@@ -258,6 +240,7 @@ void Output::sort() {
       return true;
     }
   };
+  std::lock_guard lck(mtxParams);
   std::stable_sort(list.begin(), list.end(), compare);
 }
 
@@ -284,17 +267,21 @@ void Output::printEntry(size_t index, const Entry &entry) {
 void Output::printColumnHeaders() {
   auto &s = stream();
   if (visibleControlHints()) {
-    std::wstring ss = L"[s]:" +
-                      std::to_wstring(static_cast<unsigned>(sorting.load())) +
-                      (reverseSorting ? L"-" : L"+") + L" [n]↓ [p]↑ [q]";
+    std::wstring ss;
+    {
+      std::lock_guard lck(mtxParams);
+      ss = L"[s]:" + std::to_wstring(static_cast<unsigned>(sorting)) +
+           (reverseSorting ? L"-" : L"+") + L" [n]↓ [p]↑ [q]";
+    }
     s << ss;
     s << std::setw(idxWidth + colWidth[ColPath] - ss.size()) << "[0]";
     for (size_t i = ColPath + 1; i < ColumnsCount; ++i)
       s << std::setw(colWidth[i]) << (L"[" + std::to_wstring(i) + L"]");
     s << std::endl;
   }
-  std::wstring sCount = L"(" + std::to_wstring(filteredCount) +
-                        (filteredCount == 1 ? L" file" : L" files") + L")";
+  size_t cnt = count();
+  std::wstring sCount =
+      L"(" + std::to_wstring(cnt) + (cnt == 1 ? L" file" : L" files") + L")";
   s << sCount;
   s << std::setw(idxWidth + colWidth[ColPath] - sCount.size())
     << columnNames[ColPath];
@@ -326,6 +313,17 @@ Output::Entry &Output::getEntry(const std::wstring &path) {
     return *it;
   list.emplace_back(Entry{path});
   return list.back();
+}
+
+std::string Output::fixRelativePath(const std::string &path) {
+  std::regex current(R"(/\./)");
+  std::regex parent(R"(/[^\./]+/\.\./)");
+  std::string s(path);
+  while (regex_search(s, current))
+    s = regex_replace(s, current, "/");
+  while (regex_search(s, parent))
+    s = regex_replace(s, parent, "/");
+  return s;
 }
 
 std::wstring Output::truncString(const std::wstring &str, size_t maxSize,
@@ -375,8 +373,8 @@ size_t Output::headerHeight() const {
 }
 
 FileOutput::FileOutput(const char *path, pid_t pid, const std::string &cmd,
-                       unsigned delay)
-    : Output(pid, cmd, delay), file(path) {
+                       const std::string &filter, unsigned delay)
+    : Output(pid, cmd, filter, delay), file(path) {
   start();
 }
 
@@ -400,8 +398,8 @@ size_t TerminalOutput::nCols;
 size_t TerminalOutput::nRows;
 
 TerminalOutput::TerminalOutput(pid_t pid, const std::string &cmd,
-                               unsigned delay)
-    : Output(pid, cmd, delay) {
+                               const std::string &filter, unsigned delay)
+    : Output(pid, cmd, filter, delay) {
   signal(SIGWINCH, &TerminalOutput::sigwinchHandler);
   updateWindowSize();
   start();
@@ -423,7 +421,7 @@ void TerminalOutput::pageDown() {
   size_t n = count() + headerHeight();
   if (m < n && nRows > headerHeight()) {
     scrollDelta += std::min(nRows - headerHeight(), n - m);
-    update();
+    requestUpdate();
   }
 }
 
@@ -432,7 +430,7 @@ void TerminalOutput::pageUp() {
     size_t n = std::min(scrollDelta, nRows - headerHeight());
     if (n) {
       scrollDelta -= n;
-      update();
+      requestUpdate();
     }
   }
 }

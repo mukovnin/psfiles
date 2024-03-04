@@ -2,14 +2,16 @@
 
 #include "column.hpp"
 #include "event.hpp"
-#include <atomic>
+#include <chrono>
 #include <codecvt>
+#include <condition_variable>
 #include <cstddef>
 #include <ctime>
 #include <fstream>
 #include <iostream>
 #include <locale>
 #include <mutex>
+#include <queue>
 #include <string>
 #include <sys/types.h>
 #include <thread>
@@ -17,15 +19,15 @@
 
 class Output {
 public:
-  Output(pid_t pid, const std::string &cmd, unsigned delay);
+  Output(pid_t pid, const std::string &cmd, const std::string &filter,
+         unsigned delay);
   virtual ~Output();
   void setSorting(Column column);
   void toggleSortingOrder();
-  void setFilter(const std::string &filter);
-  void handleEvent(const EventInfo &event);
+  void queueEvent(const EventInfo &event);
 
 protected:
-  void update();
+  void requestUpdate();
   void start();
   void stop();
   size_t count() const;
@@ -61,35 +63,41 @@ private:
   size_t colWidth[ColumnsCount]{0, 7, 7, 7, 7, 7, 7, 5, 11, 12};
   size_t nonPathColsWidth;
   size_t maxPathWidth{0};
-  std::atomic<Column> sorting{ColPath};
-  std::atomic_bool reverseSorting{false};
-  size_t filteredCount{0};
-  bool changed{false};
+  Column sorting{ColPath};
+  bool reverseSorting{false};
   pid_t pid{0};
   std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
   std::wstring cmd;
   std::string filter;
+  std::chrono::duration<double> delay;
+  std::chrono::time_point<std::chrono::steady_clock> lastUpdateTime;
   std::vector<Entry> list;
-  mutable std::mutex mtx;
+  size_t filteredCount{0};
+  std::queue<EventInfo> eventsQueue;
+  bool updateReqEvent{false}, terminateReqEvent{false};
+  mutable std::mutex mtxEvents, mtxParams, mtxCount;
+  std::condition_variable cv;
   std::thread thread;
-  int eventFd{-1}, timerFd{-1};
   void threadRoutine();
+  void update(bool recollect);
   void sort();
   void printEntry(size_t index, const Entry &entry);
   void printProcessInfo();
   void printColumnHeaders();
+  void processEvents();
   Entry &getEntry(const std::wstring &path);
   std::tm now() const;
   std::wstring truncString(const std::wstring &str, size_t maxSize,
                            bool left) const;
   std::string formatSize(size_t size) const;
   std::string formatEvents(uint8_t state) const;
+  std::string fixRelativePath(const std::string &path);
 };
 
 class FileOutput : public Output {
 public:
   FileOutput(const char *path, pid_t pid, const std::string &cmd,
-             unsigned delay);
+             const std::string &filter, unsigned delay);
   virtual ~FileOutput();
 
 protected:
@@ -105,7 +113,8 @@ private:
 
 class TerminalOutput : public Output {
 public:
-  TerminalOutput(pid_t pid, const std::string &cmd, unsigned delay);
+  TerminalOutput(pid_t pid, const std::string &cmd, const std::string &filter,
+                 unsigned delay);
   virtual ~TerminalOutput();
   void pageUp();
   void pageDown();

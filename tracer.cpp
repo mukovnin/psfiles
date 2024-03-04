@@ -13,7 +13,6 @@
 #include <fstream>
 #include <iterator>
 #include <linux/limits.h>
-#include <regex>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
@@ -170,17 +169,6 @@ std::string Tracer::filePath(int dirFd, const std::string &relPath) {
   if (dir.empty())
     return relPath;
   return dir + '/' + relPath;
-}
-
-std::string Tracer::fixRelativePath(const std::string &path) {
-  std::regex current(R"(/\./)");
-  std::regex parent(R"(/[^\./]+/\.\./)");
-  std::string s(path);
-  while (regex_search(s, current))
-    s = regex_replace(s, current, "/");
-  while (regex_search(s, parent))
-    s = regex_replace(s, parent, "/");
-  return s;
 }
 
 std::string Tracer::getCmdLine() {
@@ -399,12 +387,8 @@ bool Tracer::handleSyscall(pid_t tid) {
         break;
       }
       }
-      if (ei.pid) {
-        ei.path = fixRelativePath(ei.path);
-        ei.strArg = fixRelativePath(ei.strArg);
-        if (callback)
-          callback(ei);
-      }
+      if (ei.pid && callback)
+        callback(ei);
     }
     state.erase(it);
   }

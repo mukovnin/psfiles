@@ -20,18 +20,18 @@ int main(int argc, char **argv) {
 
   pthread_t mainThread = pthread_self();
 
-  Tracer tracer = args.traceeArgs() ? Tracer(args.traceeArgs())
-                                    : Tracer(args.traceePid());
+  Tracer tracer =
+      args.traceeArgs() ? Tracer(args.traceeArgs()) : Tracer(args.traceePid());
 
   std::unique_ptr<Output> output;
   if (auto file = args.outputFile()) {
     output.reset(new FileOutput(file, tracer.traceePid(),
-                                tracer.traceeCmdLine(), args.delay()));
+                                tracer.traceeCmdLine(), args.filter(),
+                                args.delay()));
   } else {
     output.reset(new TerminalOutput(tracer.traceePid(), tracer.traceeCmdLine(),
-                                    args.delay()));
+                                    args.filter(), args.delay()));
   }
-  output->setFilter(args.filter());
   output->setSorting(args.sortType());
   if (args.reverseSorting())
     output->toggleSortingOrder();
@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
   if (!args.outputFile())
     input.reset(new Input(inCallback));
 
-  auto outCallback = [&](const EventInfo &ei) { output->handleEvent(ei); };
+  auto outCallback = [&](const EventInfo &ei) { output->queueEvent(ei); };
   tracer.setOutputCallback(outCallback);
 
   return tracer.loop() ? EXIT_SUCCESS : EXIT_FAILURE;
