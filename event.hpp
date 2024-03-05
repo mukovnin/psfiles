@@ -11,6 +11,7 @@ struct EventInfo {
   pid_t pid;
   Event type;
   std::string path;
+  bool exists{true};
   size_t sizeArg{0};
   std::string strArg{};
 };

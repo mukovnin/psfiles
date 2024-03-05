@@ -131,7 +131,7 @@ std::set<pid_t> Tracer::getProcThreads() {
   return ret;
 }
 
-std::string Tracer::readLink(const std::string &path) {
+std::string Tracer::readLink(const std::string &path, bool *pExists) {
   std::string out(PATH_MAX, 0);
   if (readlink(path.data(), out.data(), out.size()) == -1) {
     LOGPE("readlink");
@@ -139,21 +139,28 @@ std::string Tracer::readLink(const std::string &path) {
   }
   if (size_t len = out.find('\0'); len != std::string::npos)
     out.resize(len);
-  const std::string deleted = " (deleted)";
-  if (out.ends_with(deleted) && !std::filesystem::exists(out))
+  bool exists{true};
+  static const std::string deleted = " (deleted)";
+  if (out.ends_with(deleted) && !std::filesystem::exists(out)) {
     out.erase(out.size() - deleted.size());
+    exists = false;
+  }
+  if (pExists)
+    *pExists = exists;
   return out;
 }
 
-std::string Tracer::filePath(int fd) {
+std::pair<std::string, bool> Tracer::filePath(int fd) {
   if (fd < 0)
-    return invalidFd;
+    return {invalidFd, false};
   const char *std[] = {"*STDIN*", "*STDOUT*", "*STDERR*"};
   if (fd <= 2)
-    return std[fd];
+    return {std[fd], true};
   std::string linkPath =
       "/proc/" + std::to_string(mainPid) + "/fd/" + std::to_string(fd);
-  return readLink(linkPath);
+  bool exists;
+  std::string path = readLink(linkPath, &exists);
+  return {path, exists};
 }
 
 std::string Tracer::filePath(int dirFd, const std::string &relPath) {
@@ -164,7 +171,7 @@ std::string Tracer::filePath(int dirFd, const std::string &relPath) {
     std::string linkPath = "/proc/" + std::to_string(mainPid) + "/cwd";
     dir = readLink(linkPath);
   } else {
-    dir = filePath(dirFd);
+    dir = filePath(dirFd).first;
   }
   if (dir.empty())
     return relPath;
@@ -297,7 +304,7 @@ bool Tracer::handleSyscall(pid_t tid) {
     std::copy(std::begin(si.entry.args), std::end(si.entry.args),
               std::begin(st.args));
     if (st.nr == __NR_close)
-      closingFiles[tid] = filePath(st.args[0]);
+      closingFiles[tid] = filePath(st.args[0]).first;
   } else if (si.op == PTRACE_SYSCALL_INFO_EXIT) {
     auto it = state.find(tid);
     if (it == state.end()) {
@@ -315,7 +322,8 @@ bool Tracer::handleSyscall(pid_t tid) {
       case __NR_preadv:
       case __NR_preadv2:
       case __NR_pread64: {
-        ei = {tid, Event::Read, filePath(args[0]), (size_t)rval};
+        auto [path, exists] = filePath(args[0]);
+        ei = {tid, Event::Read, path, exists, (size_t)rval};
         break;
       }
       case __NR_write:
@@ -323,14 +331,16 @@ bool Tracer::handleSyscall(pid_t tid) {
       case __NR_pwritev:
       case __NR_pwritev2:
       case __NR_pwrite64: {
-        ei = {tid, Event::Write, filePath(args[0]), (size_t)rval};
+        auto [path, exists] = filePath(args[0]);
+        ei = {tid, Event::Write, path, exists, (size_t)rval};
         break;
       }
       case __NR_creat:
       case __NR_open:
       case __NR_openat:
       case __NR_openat2: {
-        ei = {tid, Event::Open, filePath(rval)};
+        auto [path, exists] = filePath(rval);
+        ei = {tid, Event::Open, path, exists};
         break;
       }
       case __NR_close: {
@@ -343,8 +353,10 @@ bool Tracer::handleSyscall(pid_t tid) {
       case __NR_mmap: {
         int fd = args[4];
         int flags = args[3];
-        if (!(flags & MAP_ANONYMOUS))
-          ei = {tid, Event::Map, filePath(fd)};
+        if (!(flags & MAP_ANONYMOUS)) {
+          auto [path, exists] = filePath(fd);
+          ei = {tid, Event::Map, path, exists};
+        }
         break;
       }
       case __NR_rename:
@@ -365,7 +377,7 @@ bool Tracer::handleSyscall(pid_t tid) {
         }
         from = filePath(dirFrom, readString(tid, pFrom));
         to = filePath(dirTo, readString(tid, pTo));
-        ei = {tid, Event::Rename, from, 0, to};
+        ei = {tid, Event::Rename, from, true, 0, to};
         break;
       }
       case __NR_unlink:
@@ -380,7 +392,7 @@ bool Tracer::handleSyscall(pid_t tid) {
           pPath = (void *)args[1];
         }
         std::string path = filePath(dir, readString(tid, pPath));
-        ei = {tid, Event::Unlink, path};
+        ei = {tid, Event::Unlink, path, false};
         break;
       }
       default: {

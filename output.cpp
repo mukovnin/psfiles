@@ -125,6 +125,8 @@ void Output::processEvents() {
       item.filtered = fnmatch(filter.c_str(), info.path.c_str(), 0) == 0;
     item.lastThread = info.pid;
     item.lastAccess = now();
+    if (!info.exists)
+      item.specialEvents |= Entry::EventUnlinked;
     switch (info.type) {
     case Event::Open: {
       ++item.openCount;

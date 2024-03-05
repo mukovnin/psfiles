@@ -31,10 +31,10 @@ private:
   bool spawnTracee(char *const *argv);
   bool setSignalHandler();
   std::set<pid_t> getProcThreads();
-  std::string filePath(int fd);
+  std::pair<std::string, bool> filePath(int fd);
   std::string filePath(int dirFd, const std::string &relPath);
   std::string getCmdLine();
-  std::string readLink(const std::string &path);
+  std::string readLink(const std::string &path, bool *pExists = nullptr);
   std::string readString(pid_t tid, void *addr);
   static void signalHandler(int);
 
