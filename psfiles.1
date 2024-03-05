@@ -1,5 +1,5 @@
 .\" Manpage for psfiles.
-.TH man 1 "24 Feb 2024" "0.3.0" "psfiles man page"
+.TH "PSFILES" "1" "5 Mar 2024" "\ \&" "\ \&"
 .SH NAME
 psfiles \- monitor file system activity of Linux process
 .SH SYNOPSIS
@@ -88,6 +88,8 @@ show previous page (scroll up)
 .BI q
 quit
 .SH EXAMPLES
+.BI psfiles
+should be launched by a privileged user (CAP_SYS_PTRACE capability is required).
 .TP
 Start new process, sort descending by write size, output to file, update output every minute
 psfiles -d 60 -s wsize- -o output.txt -c emacs /home/user/cpp/main.cpp
@@ -95,7 +97,8 @@ psfiles -d 60 -s wsize- -o output.txt -c emacs /home/user/cpp/main.cpp
 Attach to existing process, sort by path, output to stdout, update output every second, show files from user home directory only:
 psfiles -f "/home/user/*" -p $(pidof gedit)
 .SH SEE ALSO
-.BR strace(1)
+.sp
+strace(1), lsof(8)
 .SH BUGS
 No known bugs.
 .SH AUTHOR
